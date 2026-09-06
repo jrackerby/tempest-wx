@@ -1,0 +1,88 @@
+# Self-assessment against the Home Assistant integration quality scale.
+#
+# LAW.md §15 makes the scale this estate's build standard, and TOOLS.md records
+# why this file is the only gate there is: hassfest's `validate_iqs_file` opens
+# with `if not integration.core: return`, so a custom component is never checked
+# against the scale, and a `quality_scale` key in the manifest is a self-claim
+# with nothing behind it. No such key is declared in manifest.json. The rule
+# names below are read from `ALL_RULES` in core's script/hassfest/quality_scale.py,
+# not from the docs page, which names tiers and not rules.
+#
+# Honest `todo`s. A rule marked `done` here has actually been done.
+
+rules:
+  # --- Bronze ---
+  action-setup: done  # no service actions registered
+  appropriate-polling: done  # cadence comes from the payload's own refresh_interval_seconds
+  brands: todo  # no icon/logo submitted to home-assistant/brands; private integration
+  common-modules: done  # coordinator.py, entity.py
+  config-flow: done
+  config-flow-test-coverage: todo  # the flow is untested; needs pytest-homeassistant-custom-component
+  dependency-transparency: done  # no third-party requirements at all
+  docs-actions: done  # none to document
+  docs-conditions: done  # no conditions provided
+  docs-triggers: done  # no triggers provided
+  docs-high-level-description: done  # README.md
+  docs-installation-instructions: done  # README.md
+  docs-removal-instructions: done  # README.md
+  entity-event-setup: done  # no event subscriptions
+  entity-unique-id: done  # every entity sets one, prefixed by domain and station
+  has-entity-name: done  # _attr_has_entity_name = True on the base entity
+  runtime-data: done  # entry.runtime_data, typed via TempestConfigEntry
+  test-before-configure: done
+  # ^ The config flow calls better_forecast against the chosen station before
+  #   creating the entry — the same endpoint and token the coordinator polls.
+  #   LAW.md §9: a check on a different channel than the one that will be used
+  #   certifies nothing, and certifies it green.
+  test-before-setup: done  # async_config_entry_first_refresh
+  unique-config-entry: done  # unique_id is tempest_wx_<station_id>
+
+  # --- Silver ---
+  action-exceptions: done  # no actions
+  config-entry-unloading: done
+  # ^ async_unload_entry unloads exactly the platforms that were forwarded.
+  #   The integration this replaces unloads [SENSOR, WEATHER] even in local
+  #   mode, where only SENSOR was ever set up.
+  docs-configuration-parameters: done  # README.md
+  docs-installation-parameters: done  # README.md
+  entity-unavailable: done
+  # ^ The coordinator raises UpdateFailed on an unreachable API. This does NOT
+  #   contradict LAW.md §11's never-raise contract: that governs
+  #   household_state, whose coordinator reads other ENTITIES and so has no
+  #   service to lose. See coordinator.py's module docstring.
+  integration-owner: done  # @jrackerby
+  log-when-unavailable: done  # DataUpdateCoordinator logs once on the crossing and once on recovery
+  parallel-updates: done  # PARALLEL_UPDATES = 0 on all three platforms
+  reauthentication-flow: done  # async_step_reauth / reauth_confirm, on a rejected token only
+  test-coverage: todo
+  # ^ 23 tests over the pure transform layer, run with no HA and no token.
+  #   The HA-facing entity classes are untested; that needs
+  #   pytest-homeassistant-custom-component, which is not installed here.
+
+  # --- Gold / Platinum: not targeted. LAW.md §15 sets Silver as the target for
+  #     anything reading a device or service; these are recorded as todo rather
+  #     than exempt so the gap stays visible.
+  devices: done  # one service device per station
+  diagnostics: todo
+  discovery: todo  # the local UDP broadcast is discoverable; the cloud entry is not
+  discovery-update-info: todo
+  docs-data-update: todo
+  docs-examples: todo
+  docs-known-limitations: done  # README.md records the token requirement and the local/cloud split
+  docs-supported-devices: done  # README.md
+  docs-supported-functions: done  # README.md
+  docs-troubleshooting: todo
+  docs-use-cases: done  # README.md
+  dynamic-devices: todo  # one station per entry, by design
+  entity-category: todo
+  entity-device-class: done  # every sensor that has a meaningful one declares it
+  entity-disabled-by-default: todo
+  entity-translations: done  # strings.json + translations/en.json
+  exception-translations: todo
+  icon-translations: todo
+  reconfiguration-flow: todo
+  repair-issues: todo
+  stale-devices: todo  # one station per entry; nothing goes stale
+  inject-websession: done  # async_get_clientsession, passed into TempestApi
+  strict-typing: todo  # annotated throughout, but not py.typed and not mypy-clean
+  async-dependency: done  # no third-party dependency at all; the only I/O is aiohttp

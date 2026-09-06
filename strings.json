@@ -1,0 +1,70 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tempest",
+        "description": "Create a personal access token at tempestwx.com under Settings → Data Authorizations, then paste it here.",
+        "data": {
+          "token": "Personal access token"
+        }
+      },
+      "station": {
+        "title": "Station",
+        "description": "The forecast endpoint is called against this station before the entry is created, so a station that cannot answer is refused here rather than set up green and found empty later.",
+        "data": {
+          "station_id": "Station"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Tempest",
+        "description": "The stored token was rejected. Paste a replacement.",
+        "data": {
+          "token": "Personal access token"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the Tempest API.",
+      "invalid_auth": "That token was rejected.",
+      "no_stations": "The token is valid but has no stations attached to it.",
+      "no_forecast": "The station answered, but returned no forecast."
+    },
+    "abort": {
+      "already_configured": "That station is already set up.",
+      "reauth_successful": "Re-authentication succeeded."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sea_level_pressure": { "name": "Sea level pressure" },
+      "pressure_trend": {
+        "name": "Pressure trend",
+        "state": {
+          "falling": "Falling",
+          "steady": "Steady",
+          "rising": "Rising"
+        }
+      },
+      "lightning_strike_count_last_1hr": { "name": "Lightning strikes last hour" },
+      "lightning_strike_count_last_3hr": { "name": "Lightning strikes last 3 hours" },
+      "lightning_strike_last_distance": { "name": "Lightning last distance" },
+      "lightning_strike_last_time": { "name": "Lightning last strike" },
+      "precip_accum_local_day": { "name": "Rain today" },
+      "precip_accum_local_yesterday": { "name": "Rain yesterday" },
+      "precip_minutes_local_day": { "name": "Rain minutes today" },
+      "precip_minutes_local_yesterday": { "name": "Rain minutes yesterday" },
+      "wet_bulb_globe_temperature": { "name": "Wet bulb globe temperature" },
+      "wind_direction_cardinal": { "name": "Wind direction cardinal" },
+      "conditions": { "name": "Conditions" },
+      "forecast_temp_high": { "name": "Forecast high today" },
+      "forecast_temp_low": { "name": "Forecast low today" },
+      "forecast_precip_probability": { "name": "Forecast rain chance today" },
+      "sunrise": { "name": "Sunrise" },
+      "sunset": { "name": "Sunset" }
+    },
+    "binary_sensor": {
+      "precip_day_rain_check": { "name": "Rain check today" },
+      "precip_yesterday_rain_check": { "name": "Rain check yesterday" }
+    }
+  }
+}
