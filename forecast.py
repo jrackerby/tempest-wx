@@ -262,19 +262,20 @@ def current_conditions(payload: Any) -> dict[str, Any]:
 def pick(source: Any, *keys: str) -> Any:
     """First present, non-None value among `keys`.
 
-    THE LIGHTNING FIELDS ARE SPELLED TWO WAYS AND ONLY ONE OF THEM IS REAL.
-    WeatherFlow's own documentation for `better_forecast` names them
-    `lighting_strike_count_last_1hr`, `lighting_strike_last_distance` and so
-    on — "lighting", no first `n`. `weatherflow4py`'s model declares them
-    correctly spelled, `lightning_*`, and maps by exact field name, so against
-    the documented payload those attributes never bind and silently read their
-    dataclass default of 0. A lightning counter pinned at zero is the failure
-    mode you cannot see: it looks exactly like calm weather.
+    THE LIGHTNING FIELDS ARE SPELLED TWO WAYS AND THE DOCUMENTATION IS THE
+    WRONG ONE. WeatherFlow's published `better_forecast` reference names them
+    `lighting_strike_count_last_1hr`, `lighting_strike_last_distance` and so on
+    — "lighting", no first `n`. The LIVE endpoint does not: measured against
+    station 197799, every one of them comes back correctly spelled,
+    `lightning_*`. So the docs are wrong and `weatherflow4py`'s declaration is
+    right, which is the opposite of what this docstring claimed before anyone
+    had called the API with a token.
 
-    Rather than pick a side on a spelling this component does not control,
-    every lightning reading is looked up under both. Whichever the API is
-    emitting today is the one that answers, and the day the vendor fixes the
-    typo nothing here breaks.
+    The dual lookup stays, and is now defending against the documentation
+    rather than against the library: the two disagree, this component controls
+    neither, and a lightning counter reading zero because a key never bound is
+    the failure mode you cannot see — it looks exactly like calm weather.
+    Whichever spelling the API emits is the one that answers.
     """
     if not isinstance(source, dict):
         return None

@@ -22,8 +22,14 @@ API_ROOT: Final = "https://swd.weatherflow.com/swd/rest"
 FORECAST_URL: Final = f"{API_ROOT}/better_forecast"
 STATIONS_URL: Final = f"{API_ROOT}/stations"
 
-# Fallback only. The live cadence comes from the payload's own
-# `refresh_interval_seconds` — see forecast.refresh_interval.
+# THIS IS THE CADENCE IN PRACTICE, not the fallback it was written as.
+# `forecast.refresh_interval` honours a payload's own
+# `refresh_interval_seconds` where one is present — but station 197799's live
+# response does not carry that key at all, so every poll resolves to this
+# number. Kept because the field is documented and may appear, and because
+# following the vendor's own answer is right when it gives one; described
+# honestly because a comment claiming the cadence is server-driven would send
+# the next reader looking for a value that is not in the payload.
 DEFAULT_SCAN_INTERVAL: Final = 300
 MIN_SCAN_INTERVAL: Final = 60
 

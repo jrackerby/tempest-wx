@@ -282,6 +282,29 @@ class TempestSensor(TempestEntity, SensorEntity):
         self._attr_unique_id = f"{DOMAIN}_{coordinator.station_id}_{description.key}"
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """The vendor's own wording for a reading that is not a point value.
+
+        `lightning_strike_last_distance` came back as 36 against a
+        `_msg` of "34 - 38 km": the API reports a BUCKET and this sensor
+        publishes its midpoint. The number is the useful thing for a graph or a
+        threshold, so it stays the state — but a surface that wants to tell a
+        person how far away the strike was should render the range, not imply a
+        precision the sensor does not have.
+        """
+        if self.entity_description.key != "lightning_strike_last_distance":
+            return None
+        data = self.coordinator.data
+        if not isinstance(data, dict):
+            return None
+        message = pick(
+            current_conditions(data),
+            "lighting_strike_last_distance_msg",
+            "lightning_strike_last_distance_msg",
+        )
+        return None if message is None else {"range": message}
+
+    @property
     def native_value(self) -> Any:
         """The reading, or None when the payload does not carry it."""
         data = self.coordinator.data
