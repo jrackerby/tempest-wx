@@ -24,10 +24,11 @@ wall panel keeps its temperature. See `local.py`.
 
 - **A real weather entity** with 10-day daily and hourly forecast.
 - **The station's own condition string**, from the API's `icon` field. Nothing
-  is derived. `packages/weather_home.yaml` derives one today — precipitation,
+  is derived. The template entity this replaced derived one — precipitation,
   then fog, then a day/night split, then cloud cover inferred from solar
-  radiation against a clear-sky model — and GH-584 is open against its dusk
-  band. With the station's own icon there is nothing to derive.
+  radiation against a clear-sky model — and GH-584 was open against the dusk
+  band of that derivation. With the station's own icon there is nothing to
+  derive and no band to rule on.
 - **Windowed lightning**: strikes in the last hour and last three hours, last
   distance, last strike time. `weather_home.yaml` refuses to classify a
   `lightning` condition at all because the local strike counter's reset
@@ -104,8 +105,18 @@ self-test proving it can fail).
 
 ## Status
 
-**Live and verified.** The entity serves `weather.forecast_home` — it took that
-id over from the template in `packages/weather_home.yaml`, which is deleted, so
-every board and consumer reading that id was cut over without a code change in
-any dashboard repo. Forecast confirmed against the live API: 10 daily and 219
-hourly rows.
+**Live, verified, and serving the fleet.** This component's entity IS
+`weather.forecast_home`: it took the id over from the template that used to
+hold it, so every board and consumer reading that id was cut over with no code
+change in any dashboard repo. Confirmed on the live estate — vendor condition
+rather than a derived one, 10 daily and 218 hourly forecast rows through
+`weather.get_forecasts`, and readings served from the local radio with the
+cloud as fallback.
+
+The handover needed one manual step and is worth recording: **Home Assistant
+does not release an entity id when its config is deleted.** The registry row
+survives, so deleting the template package did not free `weather.forecast_home`
+— it just left the id locked and every board reading `unavailable`. The same
+registry still holds `weather.keqy` and `weather.met_no_home` for integrations
+removed long ago. Renaming the old row out of the way first is what actually
+frees an id.
