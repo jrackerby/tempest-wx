@@ -40,6 +40,7 @@ from .forecast import (
     hourly_forecast,
     map_condition,
 )
+from .local import local_is_answering, read_local
 
 # Every entity on this platform reads an already-fetched coordinator
 # payload; nothing here talks to the API on its own, so there is no
@@ -84,7 +85,20 @@ class TempestWeather(TempestEntity, SingleCoordinatorWeatherEntity):
         return current_conditions(self.coordinator.data)
 
     def _reading(self, key: str) -> float | None:
-        """One numeric current reading, or None when it is absent."""
+        """One current reading: the LOCAL radio first, the cloud second.
+
+        Local wins because it is the same station reported over UDP without a
+        WAN hop — fresher, and still answering when the internet is not. The
+        cloud value is the fallback rather than the source, so a broadband
+        outage ages this entity instead of emptying it. See local.py for why
+        that mattered enough to build: the template entity this replaced was
+        local-only, and cutting the boards over to a cloud-only entity would
+        have blanked every wall panel's temperature on the first WAN blip.
+        """
+        local = read_local(self.hass, key)
+        if local is not None:
+            return local
+
         value = self._current.get(key)
         if value is None or isinstance(value, bool):
             return None
@@ -92,6 +106,23 @@ class TempestWeather(TempestEntity, SingleCoordinatorWeatherEntity):
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    @property
+    def available(self) -> bool:
+        """Available while EITHER source can answer.
+
+        CoordinatorEntity ties availability to the last cloud poll, which would
+        take the whole entity down — temperature included — the moment the API
+        blipped, even with the radio in the next room still reporting every
+        minute. A wall that goes blank because a remote HTTP call failed is the
+        exact failure this component was built to stop repeating.
+
+        This is not the never-raise contract of LAW.md §11 arriving by the back
+        door. The coordinator still raises `UpdateFailed`, the forecast still
+        goes away with the cloud, and `condition` still resolves to None when
+        there is no payload. Only the readings the radio can answer survive.
+        """
+        return super().available or local_is_answering(self.hass)
 
     @property
     def condition(self) -> str | None:
@@ -151,6 +182,10 @@ class TempestWeather(TempestEntity, SingleCoordinatorWeatherEntity):
         than manufacture a direction nobody measured. Carried across from
         `weather_home.yaml`, which found it live.
         """
+        # 1.0 m/s, and BOTH paths reach here in m/s: local.py converts the
+        # radio's mph before it gets this far. The threshold is carried over
+        # from weather_home.yaml, which expressed it as 1 mph — this is the
+        # stricter of the two, so a bearing withheld there is withheld here.
         speed = self._reading("wind_avg")
         if speed is None or speed <= 1.0:
             return None

@@ -11,10 +11,16 @@ with each other on 6 of the vendor's 19 icons.
 
 ## What it adds
 
-Everything here is a value the local UDP broadcast does not carry. Air
+The **sensors** here are values the local UDP broadcast does not carry;
 temperature, humidity, station pressure, wind, UV, illuminance and solar
-radiation keep arriving over the local radio, faster and with no internet
-dependency, and are deliberately **not** republished from the cloud.
+radiation keep arriving over the local radio and are deliberately **not**
+republished from the cloud as duplicate sensors.
+
+The **weather entity** is a hybrid, and that is the point: its measurements
+prefer the local radio and fall back to the cloud, while condition and forecast
+are cloud-only because the radio cannot produce them. A WAN outage therefore
+ages this entity instead of emptying it — the forecast goes stale but every
+wall panel keeps its temperature. See `local.py`.
 
 - **A real weather entity** with 10-day daily and hourly forecast.
 - **The station's own condition string**, from the API's `icon` field. Nothing
@@ -63,9 +69,15 @@ at 60s. Nothing here picks a number.
 
 ## Known limitations
 
-- **The forecast half needs the internet and a token.** The local UDP sensors
-  do not, and this component does not touch them. If the WAN is down the
-  forecast entities go unavailable and the local readings carry on.
+- **The forecast and the cloud-only sensors need the internet and a token.**
+  The weather entity does not go with them: its readings fall back to the local
+  radio, so a WAN outage leaves current conditions intact and only the forecast
+  and the derived sensors go unavailable.
+- **The weather entity reads the HACS `tempest` integration's sensor ids**
+  (`sensor.tempest_sensor_*`) for its local half. That coupling is declared in
+  `local.py` rather than hidden. If that integration is removed the lookups
+  find nothing and every reading falls through to the cloud, which is the
+  documented fallback and not a failure.
 - **One station per config entry.** Add a second entry for a second station.
 - The lightning fields are looked up under **both** vendor spellings —
   WeatherFlow's documentation names them `lighting_*` (no first `n`) while
@@ -92,7 +104,8 @@ self-test proving it can fail).
 
 ## Status
 
-The **local path and the pure transform layer are tested and green.** The cloud
-path has never been run against the live API — no Tempest token exists in the
-estate yet. Until one does, this is deployed-but-unverified in the sense of
-CLAUDE.md §3, and nothing here should be described as observed.
+**Live and verified.** The entity serves `weather.forecast_home` — it took that
+id over from the template in `packages/weather_home.yaml`, which is deleted, so
+every board and consumer reading that id was cut over without a code change in
+any dashboard repo. Forecast confirmed against the live API: 10 daily and 219
+hourly rows.

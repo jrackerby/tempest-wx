@@ -55,8 +55,8 @@ rules:
   parallel-updates: done  # PARALLEL_UPDATES = 0 on all three platforms
   reauthentication-flow: done  # async_step_reauth / reauth_confirm, on a rejected token only
   test-coverage: todo
-  # ^ 23 tests over the pure transform layer, run with no HA and no token.
-  #   The HA-facing entity classes are untested; that needs
+  # ^ 48 tests over the pure transform and local read paths, no HA, no token.
+  #   The HA-facing entity classes themselves are untested; that needs
   #   pytest-homeassistant-custom-component, which is not installed here.
 
   # --- Gold / Platinum: not targeted. LAW.md §15 sets Silver as the target for
