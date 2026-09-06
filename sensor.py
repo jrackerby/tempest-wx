@@ -113,6 +113,13 @@ SENSORS: tuple[TempestSensorDescription, ...] = (
         device_class=SensorDeviceClass.PRESSURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPressure.MBAR,
+        # INHG IS NOT COSMETIC HERE. Without it HA's US-customary map sends a
+        # PRESSURE device_class to psi, while the weather platform does its own
+        # pressure handling and lands on inHg — so this integration published
+        # the same quantity as "14.685 psi" on the sensor and "29.25 inHg" on
+        # its own weather entity, and its own forecast rows. Found by loading
+        # it, not by reading it; the code was identical either way.
+        suggested_unit_of_measurement=UnitOfPressure.INHG,
         suggested_display_precision=2,
         value_fn=_current("sea_level_pressure"),
     ),
