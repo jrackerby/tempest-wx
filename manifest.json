@@ -3,10 +3,10 @@
   "name": "Tempest (estate)",
   "codeowners": ["@jrackerby"],
   "config_flow": true,
-  "documentation": "https://github.com/jrackerby/HA/blob/master/custom_components/tempest_wx/README.md",
+  "documentation": "https://github.com/jrackerby/tempest-wx/blob/master/README.md",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/jrackerby/HA/issues",
+  "issue_tracker": "https://github.com/jrackerby/tempest-wx/issues",
   "requirements": [],
   "version": "0.1.0"
 }
