@@ -1,15 +1,25 @@
 """The weather entity: current conditions and forecast, both from the Tempest.
 
 The condition string is the STATION'S OWN, read from `better_forecast`'s
-`icon`. It is not derived here, and that is the point. `weather.forecast_home`
-in `packages/weather_home.yaml` derives one, because local UDP reports no
-condition at all: precipitation, then fog, then a day/night split, then cloud
-cover inferred from solar radiation against a clear-sky model. GH-584 is open
-against the dusk band of that derivation, asking for a ruling on what to say
-between 0° and 10° of sun elevation, where the fallback branch reads absolute
-illuminance and therefore slides sunny -> partlycloudy -> cloudy with the time
-of day rather than with the sky. With the station's own icon there is nothing
-to derive and no band to rule on.
+`icon`. It is not derived here, and that is the point. The YAML predecessor
+this replaced (`packages/weather_home.yaml`, since deleted) had to derive one,
+because local UDP reports no condition at all: precipitation, then fog, then a
+day/night split, then cloud cover inferred from solar radiation against a
+clear-sky model. That derivation cost two tickets - GH-584 on the dusk band,
+where the fallback read absolute illuminance and so slid sunny -> partlycloudy
+-> cloudy with the time of day rather than the sky, and GH-588 on the night
+branch, which asserted `clear-night` unconditionally below the horizon while
+the same file refused to publish `cloud_coverage` there, so one attribute
+claimed clear and the other said it could not tell. Both are closed. With the
+station's own icon there is no band to rule on and no night branch to
+contradict: RULED (Joel, GH-588), the condition is whatever the Tempest says
+it is.
+
+The weak link is now the vendor's icon vocabulary. `map_condition` returns
+None for an icon it does not recognise, so an unmapped value reads `unknown`
+on the glass rather than a confident wrong condition - but nothing warns when
+the vendor adds one, and intensity is read from the free-text `conditions`
+field, the only place the API reports it at all.
 """
 
 from __future__ import annotations
