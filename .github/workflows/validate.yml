@@ -57,8 +57,17 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: install pytest
-        run: pip install pytest
+      # From tests/requirements.txt, never a list written here -- a second copy
+      # of this set in the workflow goes stale the moment a test grows an
+      # import, and the failure it produces (a collection ImportError) reads
+      # like a broken test rather than a missing declaration.
+      - name: install what the suite declares it needs
+        run: |
+          set -euo pipefail
+          test -f tests/requirements.txt \
+            || { echo "CANNOT RUN: tests/requirements.txt is missing -- the suite's dependencies are undeclared and a pass here would be luck"; exit 1; }
+          cat tests/requirements.txt
+          pip install -r tests/requirements.txt
 
       # NO homeassistant install here. This is the PURE-LAYER suite: it parses
       # the source by AST and by text rather than importing it, which is why a

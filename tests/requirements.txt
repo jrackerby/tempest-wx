@@ -1,0 +1,13 @@
+# What the PURE-LAYER suite needs, and nothing else -- no homeassistant, no
+# vendor SDK. Declared here rather than in validate.yml because the suite is
+# what has the dependency; a list kept in the workflow is a second copy that
+# goes stale the moment a test grows an import.
+#
+# PyYAML earned its line the hard way. test_wiring.py has imported `yaml`
+# since it was written, and this went unnoticed for as long as the suite only
+# ever ran inside jrackerby/HA's .venv, which has PyYAML for other reasons.
+# The first run on a clean runner failed at collection: an undeclared
+# dependency is invisible exactly until the code changes machines, which is
+# what extracting this component into its own repo did.
+pytest
+PyYAML
