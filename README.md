@@ -5,7 +5,8 @@ from the same endpoint the Tempest phone app renders from.
 
 Replaces the HACS `tempest` component (`julianbow/TempestHomeAssistant`).
 The verified defect list is short: run in local-UDP mode it forwards only the
-sensor platform, so it publishes no weather entity and no forecast at all — and its two condition maps disagree
+sensor platform, so it publishes no weather entity and no forecast at all — and
+its two condition maps disagree
 with each other on 6 of the vendor's 19 icons.
 
 ## What it adds
