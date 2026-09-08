@@ -4,8 +4,7 @@ Current conditions and **forecast** from the backyard Tempest, read from the
 same endpoint the Tempest phone app renders from.
 
 Replaces the HACS `tempest` component (`julianbow/TempestHomeAssistant`).
-GH-587 carries the verified defect list; the short version is that it runs here
-in local-UDP mode, which forwards only the sensor platform, so it publishes no
+The verified defect list is short: it runs here in local-UDP mode, which forwards only the sensor platform, so it publishes no
 weather entity and no forecast at all — and its two condition maps disagree
 with each other on 6 of the vendor's 19 icons.
 
@@ -26,8 +25,8 @@ wall panel keeps its temperature. See `local.py`.
 - **The station's own condition string**, from the API's `icon` field. Nothing
   is derived. The template entity this replaced derived one — precipitation,
   then fog, then a day/night split, then cloud cover inferred from solar
-  radiation against a clear-sky model — and GH-584 was open against the dusk
-  band of that derivation. With the station's own icon there is nothing to
+  radiation against a clear-sky model — and its dusk band was a standing
+  defect. With the station's own icon there is nothing to
   derive and no band to rule on.
 - **Windowed lightning**: strikes in the last hour and last three hours, last
   distance, last strike time. `weather_home.yaml` refuses to classify a
@@ -48,11 +47,23 @@ wall panel keeps its temperature. See `local.py`.
 
 ## Installation
 
-`custom_components/tempest_wx/` in this repo, deployed by `git push ha master`.
-`custom_components/` changes need a **full Home Assistant restart** — a core
-config reload does not re-import a custom component.
+### HACS
 
-Then: Settings → Devices & Services → Add Integration → "Tempest (estate)".
+1. In Home Assistant: **HACS → ⋮ → Custom repositories**.
+2. Add `https://github.com/jrackerby/tempest-wx` with category **Integration**.
+3. Install **Tempest (estate)**, then restart Home Assistant.
+4. **Settings → Devices & Services → Add Integration → "Tempest (estate)"**.
+
+### Manual
+
+The integration lives at the repository **root**, not under
+`custom_components/` — `hacs.json` declares `content_in_root: true`. To install
+by hand, copy this repository's contents into
+`config/custom_components/tempest_wx/` and restart Home Assistant.
+
+Either way a `custom_components/` change needs a **full Home Assistant
+restart**; `homeassistant.reload_core_config` does not re-import a custom
+component.
 
 ## Configuration
 
@@ -100,23 +111,21 @@ cd custom_components/tempest_wx/tests && pytest
 Tests over `forecast.py`, which imports nothing from `homeassistant` and so
 runs with no Home Assistant, no network and no token. Three of them are
 self-tests that re-implement the defects this component was written to fix and
-assert the checks would have caught them (LAW.md §4: an assertion set needs a
-self-test proving it can fail).
+assert the checks would have caught them — an assertion set needs a self-test
+proving it can fail.
 
 ## Status
 
-**Live, verified, and serving the fleet.** This component's entity IS
-`weather.forecast_home`: it took the id over from the template that used to
-hold it, so every board and consumer reading that id was cut over with no code
-change in any dashboard repo. Confirmed on the live estate — vendor condition
+In production use. Verified against a live station: the vendor's own condition
 rather than a derived one, 10 daily and 218 hourly forecast rows through
 `weather.get_forecasts`, and readings served from the local radio with the
 cloud as fallback.
 
-The handover needed one manual step and is worth recording: **Home Assistant
-does not release an entity id when its config is deleted.** The registry row
-survives, so deleting the template package did not free `weather.forecast_home`
-— it just left the id locked and every board reading `unavailable`. The same
-registry still holds `weather.keqy` and `weather.met_no_home` for integrations
-removed long ago. Renaming the old row out of the way first is what actually
-frees an id.
+### Replacing an existing weather entity
+
+Worth knowing if you are cutting over from a template or another integration:
+**Home Assistant does not release an entity id when its config is deleted.**
+The registry row survives, so deleting the old config does not free the id — it
+leaves it locked, and anything reading it goes `unavailable`. Rename the old
+registry row out of the way *first*; that is what actually frees the id for
+this integration to claim.
