@@ -1,5 +1,5 @@
 {
-  "name": "Tempest (estate)",
+  "name": "Tempest Weather",
   "content_in_root": true,
   "render_readme": true,
   "homeassistant": "2026.9.1"
