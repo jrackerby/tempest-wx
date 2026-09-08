@@ -1,7 +1,9 @@
 {
   "domain": "tempest_wx",
-  "name": "Tempest (estate)",
-  "codeowners": ["@jrackerby"],
+  "name": "Tempest Weather",
+  "codeowners": [
+    "@jrackerby"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/jrackerby/tempest-wx/blob/master/README.md",
   "integration_type": "service",

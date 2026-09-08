@@ -1,11 +1,11 @@
-# tempest_wx — the estate's WeatherFlow Tempest integration
+# Tempest Weather
 
-Current conditions and **forecast** from the backyard Tempest, read from the
-same endpoint the Tempest phone app renders from.
+Current conditions and **forecast** from a WeatherFlow Tempest station, read
+from the same endpoint the Tempest phone app renders from.
 
 Replaces the HACS `tempest` component (`julianbow/TempestHomeAssistant`).
-The verified defect list is short: it runs here in local-UDP mode, which forwards only the sensor platform, so it publishes no
-weather entity and no forecast at all — and its two condition maps disagree
+The verified defect list is short: run in local-UDP mode it forwards only the
+sensor platform, so it publishes no weather entity and no forecast at all — and its two condition maps disagree
 with each other on 6 of the vendor's 19 icons.
 
 ## What it adds
@@ -51,8 +51,8 @@ wall panel keeps its temperature. See `local.py`.
 
 1. In Home Assistant: **HACS → ⋮ → Custom repositories**.
 2. Add `https://github.com/jrackerby/tempest-wx` with category **Integration**.
-3. Install **Tempest (estate)**, then restart Home Assistant.
-4. **Settings → Devices & Services → Add Integration → "Tempest (estate)"**.
+3. Install **Tempest Weather**, then restart Home Assistant.
+4. **Settings → Devices & Services → Add Integration → "Tempest Weather"**.
 
 ### Manual
 
@@ -98,7 +98,7 @@ at 60s. Nothing here picks a number.
 
 ## Removal
 
-Settings → Devices & Services → Tempest (estate) → Delete. Entities and the
+Settings → Devices & Services → Tempest Weather → Delete. Entities and the
 station device go with the entry. The local `tempest` integration is separate
 and is unaffected.
 
