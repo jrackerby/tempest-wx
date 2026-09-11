@@ -36,6 +36,42 @@
   },
   "entity": {
     "sensor": {
+      "air_temperature": { "name": "Temperature" },
+      "relative_humidity": { "name": "Humidity" },
+      "station_pressure": { "name": "Station pressure" },
+      "dew_point": { "name": "Dew point" },
+      "feels_like": { "name": "Feels like" },
+      "wet_bulb_temperature": { "name": "Wet bulb temperature" },
+      "air_density": { "name": "Air density" },
+      "wind_speed": { "name": "Wind speed" },
+      "wind_avg": { "name": "Wind average" },
+      "wind_gust": { "name": "Wind gust" },
+      "wind_lull": { "name": "Wind lull" },
+      "wind_direction": { "name": "Wind direction" },
+      "wind_direction_avg": { "name": "Wind direction average" },
+      "illuminance": { "name": "Illuminance" },
+      "uv": { "name": "UV index" },
+      "solar_radiation": { "name": "Solar radiation" },
+      "precip_accum_last_interval": { "name": "Rain last interval" },
+      "precipitation_intensity": { "name": "Rain rate" },
+      "precipitation_type": {
+        "name": "Precipitation type",
+        "state": {
+          "none": "None",
+          "rain": "Rain",
+          "hail": "Hail",
+          "rain_hail": "Rain and hail"
+        }
+      },
+      "lightning_avg_distance": { "name": "Lightning average distance" },
+      "lightning_count": { "name": "Lightning strikes last interval" },
+      "battery_voltage": { "name": "Battery voltage" },
+      "device_rssi": { "name": "Station signal strength" },
+      "hub_rssi": { "name": "Hub signal strength" },
+      "device_boot_time": { "name": "Station last boot" },
+      "hub_boot_time": { "name": "Hub last boot" },
+      "device_firmware": { "name": "Station firmware" },
+      "hub_firmware": { "name": "Hub firmware" },
       "sea_level_pressure": { "name": "Sea level pressure" },
       "pressure_trend": {
         "name": "Pressure trend",
@@ -64,7 +100,8 @@
     },
     "binary_sensor": {
       "precip_day_rain_check": { "name": "Rain check today" },
-      "precip_yesterday_rain_check": { "name": "Rain check yesterday" }
+      "precip_yesterday_rain_check": { "name": "Rain check yesterday" },
+      "sensor_faults": { "name": "Sensor fault" }
     }
   }
 }

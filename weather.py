@@ -37,6 +37,7 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import TempestConfigEntry
@@ -48,7 +49,15 @@ from .forecast import (
     hourly_forecast,
     map_condition,
 )
-from .local import local_is_answering, read_local
+from .local import TempestLocalStation, signal_update
+
+# Where the two sources spell one reading differently. The cloud reports a
+# single `wind_direction`; the radio reports the three-second sample and the
+# interval average separately, and the AVERAGE is the one that belongs on a
+# weather entity — an instantaneous bearing on a gusty day swings the arrow on
+# every dashboard several times a minute while saying nothing about the wind.
+# Everything not listed here is spelled the same on both sides.
+LOCAL_KEY: dict[str, str] = {"wind_direction": "wind_direction_avg"}
 
 # Every entity on this platform reads an already-fetched coordinator
 # payload; nothing here talks to the API on its own, so there is no
@@ -64,7 +73,8 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Add the station's weather entity."""
-    async_add_entities([TempestWeather(entry.runtime_data)])
+    data = entry.runtime_data
+    async_add_entities([TempestWeather(data.coordinator, data.station)])
 
 
 class TempestWeather(TempestEntity, SingleCoordinatorWeatherEntity):
@@ -82,10 +92,38 @@ class TempestWeather(TempestEntity, SingleCoordinatorWeatherEntity):
         WeatherEntityFeature.FORECAST_DAILY | WeatherEntityFeature.FORECAST_HOURLY
     )
 
-    def __init__(self, coordinator: Any) -> None:
-        """Bind the entity to its station."""
+    def __init__(
+        self, coordinator: Any, station: TempestLocalStation
+    ) -> None:
+        """Bind the entity to its station's two sources."""
         super().__init__(coordinator)
+        self._station = station
         self._attr_unique_id = f"{DOMAIN}_{coordinator.station_id}_weather"
+
+    async def async_added_to_hass(self) -> None:
+        """Also refresh when the radio speaks, not only when the cloud polls.
+
+        `CoordinatorEntity` renders on the coordinator's schedule alone, which
+        is once every few minutes. Without this the local readings would be
+        collected the moment they arrived and then sit unpublished until the
+        next cloud poll happened to write the entity — a temperature a minute
+        fresh at the source and five minutes stale on the glass, with nothing
+        anywhere to show the difference.
+        """
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_update(self.coordinator.config_entry.entry_id),
+                self._async_local_update,
+            )
+        )
+
+    @callback
+    def _async_local_update(self, message_type: str) -> None:
+        """The observation is what this entity reads; the wind sample is not."""
+        if message_type == "obs_st":
+            self.async_write_ha_state()
 
     @property
     def _current(self) -> dict[str, Any]:
@@ -95,17 +133,24 @@ class TempestWeather(TempestEntity, SingleCoordinatorWeatherEntity):
     def _reading(self, key: str) -> float | None:
         """One current reading: the LOCAL radio first, the cloud second.
 
-        Local wins because it is the same station reported over UDP without a
-        WAN hop — fresher, and still answering when the internet is not. The
-        cloud value is the fallback rather than the source, so a broadband
-        outage ages this entity instead of emptying it. See local.py for why
-        that mattered enough to build: the template entity this replaced was
+        Local wins because it is the same station over UDP without a WAN hop —
+        fresher, and still answering when the internet is not. The cloud value
+        is the fallback rather than the source, so a broadband outage ages this
+        entity instead of emptying it. The template entity this replaced was
         local-only, and cutting the boards over to a cloud-only entity would
         have blanked every wall panel's temperature on the first WAN blip.
+
+        FRESHNESS IS CHECKED, not just presence. A reading left over from
+        before the radio went quiet is not a local reading any more; treating
+        it as one would pin this entity to the last thing the station said
+        before it died and never fall through to the cloud that is still
+        answering.
         """
-        local = read_local(self.hass, key)
-        if local is not None:
-            return local
+        local_key = LOCAL_KEY.get(key, key)
+        if self._station.is_fresh(local_key):
+            local = self._station.get(local_key)
+            if isinstance(local, (int, float)) and not isinstance(local, bool):
+                return float(local)
 
         value = self._current.get(key)
         if value is None or isinstance(value, bool):
@@ -125,11 +170,12 @@ class TempestWeather(TempestEntity, SingleCoordinatorWeatherEntity):
         minute. A wall that goes blank because a remote HTTP call failed is the
         exact failure this component was built to stop repeating.
 
-        This is not a never-raise contract arriving by the back door. The coordinator still raises `UpdateFailed`, the forecast still
-        goes away with the cloud, and `condition` still resolves to None when
-        there is no payload. Only the readings the radio can answer survive.
+        This is not a never-raise contract arriving by the back door. The
+        coordinator still raises `UpdateFailed`, the forecast still goes away
+        with the cloud, and `condition` still resolves to None when there is no
+        payload. Only the readings the radio can answer survive.
         """
-        return super().available or local_is_answering(self.hass)
+        return super().available or self._station.answering
 
     @property
     def condition(self) -> str | None:
@@ -189,10 +235,10 @@ class TempestWeather(TempestEntity, SingleCoordinatorWeatherEntity):
         than manufacture a direction nobody measured. Carried across from
         `weather_home.yaml`, which found it live.
         """
-        # 1.0 m/s, and BOTH paths reach here in m/s: local.py converts the
-        # radio's mph before it gets this far. The threshold is carried over
-        # from weather_home.yaml, which expressed it as 1 mph — this is the
-        # stricter of the two, so a bearing withheld there is withheld here.
+        # 1.0 m/s, and BOTH paths reach here in m/s already: the radio emits
+        # m/s and the cloud is asked for it. The threshold is carried over from
+        # weather_home.yaml, which expressed it as 1 mph — this is the stricter
+        # of the two, so a bearing withheld there is withheld here.
         speed = self._reading("wind_avg")
         if speed is None or speed <= 1.0:
             return None
