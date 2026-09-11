@@ -65,7 +65,7 @@ rules:
   parallel-updates: done  # PARALLEL_UPDATES = 0 on all three platforms
   reauthentication-flow: done  # async_step_reauth / reauth_confirm, on a rejected token only
   test-coverage: todo
-  # ^ 100 tests over the pure layers — the cloud transform, the UDP wire
+  # ^ 107 tests over the pure layers — the cloud transform, the UDP wire
   #   format, the derived quantities — plus static joins over the platform
   #   declarations. No HA, no network, no token. The HA-facing entity classes
   #   and the socket lifecycle are untested; that needs
