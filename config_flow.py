@@ -1,7 +1,7 @@
-"""Config flow for the estate's Tempest integration.
+"""Config flow for the Tempest Weather integration.
 
-THE SETUP CHECK EXERCISES THE CHANNEL THAT WILL ACTUALLY BE USED. LAW.md §9:
-a check that probes a different channel than the one the integration polls
+THE SETUP CHECK EXERCISES THE CHANNEL THAT WILL ACTUALLY BE USED. A check that
+probes a different channel than the one the integration polls
 certifies nothing, and it certifies nothing GREEN, which is worse than no
 check at all. So this flow does not merely list stations to prove the token
 parses — it calls `better_forecast` against the station being configured, the

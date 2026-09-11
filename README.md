@@ -3,11 +3,25 @@
 Current conditions and **forecast** from a WeatherFlow Tempest station, read
 from the same endpoint the Tempest phone app renders from.
 
-Replaces the HACS `tempest` component (`julianbow/TempestHomeAssistant`).
-The verified defect list is short: run in local-UDP mode it forwards only the
-sensor platform, so it publishes no weather entity and no forecast at all — and
-its two condition maps disagree
-with each other on 6 of the vendor's 19 icons.
+A Tempest broadcasts its measurements over the local network by UDP, but the
+radio carries no *condition* and no *forecast* — the station's icon and its
+10-day outlook exist only in WeatherFlow's cloud. So a local-only setup has
+readings and no weather entity worth the name, and a cloud-only one goes dark
+the moment the internet does.
+
+**This integration is the hybrid.** Measurements prefer the local radio and
+fall back to the cloud; condition and forecast are cloud-only because the radio
+cannot produce them. A WAN outage therefore *ages* the weather entity instead
+of emptying it — the forecast goes stale while every display keeps its current
+temperature.
+
+It is designed to run **alongside** the HACS `tempest` integration
+([`julianbow/TempestHomeAssistant`](https://github.com/julianbow/TempestHomeAssistant))
+in local-UDP mode, not instead of it: that integration supplies the local
+readings this one reads, and in local-UDP mode it forwards only the sensor
+platform, so it publishes no weather entity and no forecast. If it is not
+installed, everything here falls through to the cloud — see *Known
+limitations*.
 
 ## What it adds
 
@@ -16,25 +30,22 @@ temperature, humidity, station pressure, wind, UV, illuminance and solar
 radiation keep arriving over the local radio and are deliberately **not**
 republished from the cloud as duplicate sensors.
 
-The **weather entity** is a hybrid, and that is the point: its measurements
-prefer the local radio and fall back to the cloud, while condition and forecast
-are cloud-only because the radio cannot produce them. A WAN outage therefore
-ages this entity instead of emptying it — the forecast goes stale but every
-wall panel keeps its temperature. See `local.py`.
+The **weather entity** is the hybrid described above; the unit conversion and
+the per-reading fallback live in `local.py`.
 
 - **A real weather entity** with 10-day daily and hourly forecast.
 - **The station's own condition string**, from the API's `icon` field. Nothing
-  is derived. The template entity this replaced derived one — precipitation,
-  then fog, then a day/night split, then cloud cover inferred from solar
-  radiation against a clear-sky model — and its dusk band was a standing
-  defect. With the station's own icon there is nothing to
-  derive and no band to rule on.
+  is derived. Deriving a condition locally means a ladder — precipitation, then
+  fog, then a day/night split, then cloud cover inferred from solar radiation
+  against a clear-sky model — and the dusk band in that ladder is where such
+  implementations go wrong, because there is no clean threshold to pick. With
+  the station's own icon there is nothing to derive and no band to argue about.
 - **Windowed lightning**: strikes in the last hour and last three hours, last
-  distance, last strike time. `weather_home.yaml` refuses to classify a
-  `lightning` condition at all because the local strike counter's reset
-  behaviour was never measured and reading it as "strikes now" would latch the
-  entity into `lightning` forever after the first strike. These counters are
-  already windowed by the vendor.
+  distance, last strike time — already windowed by the vendor. Note that
+  nothing here classifies a `lightning` *condition* from the local strike
+  counter: that counter's reset behaviour is not documented, and reading it as
+  "strikes now" would latch the entity into `lightning` for ever after the
+  first strike.
 - **Daily rain totals** — today and yesterday, in millimetres and in minutes —
   which UDP reports only per observation.
 - **WeatherFlow's own rain check** as two binary sensors. A Tempest's rain
@@ -117,7 +128,7 @@ proving it can fail.
 
 ## Status
 
-In production use. Verified against a live station: the vendor's own condition
+In production use, verified against a live station: the vendor's own condition
 rather than a derived one, 10 daily and 218 hourly forecast rows through
 `weather.get_forecasts`, and readings served from the local radio with the
 cloud as fallback.

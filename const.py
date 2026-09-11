@@ -1,4 +1,4 @@
-"""Constants for the estate's Tempest integration."""
+"""Constants for the Tempest Weather integration."""
 
 from __future__ import annotations
 

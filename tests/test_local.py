@@ -204,7 +204,7 @@ def test_an_unconvertible_unit_falls_through_rather_than_lying() -> None:
 
 @pytest.mark.parametrize("bad", ["unknown", "unavailable", "none", "", "None", "  "])
 def test_unreadable_states_are_none_never_zero(bad: str) -> None:
-    """`could not read` must not collapse into `ok at zero` (LAW.md §11)."""
+    """`could not read` must not collapse into `ok at zero`."""
     h = hass(air_temperature=(bad, "°F"))
     assert local.read_local(h, "air_temperature") is None
 
@@ -268,7 +268,7 @@ def test_every_source_the_weather_entity_asks_for_exists() -> None:
 
 
 def test_selftest_the_conversion_check_can_fail() -> None:
-    """Prove the °F assertion above discriminates (LAW.md §4)."""
+    """Prove the °F assertion above discriminates."""
     raw = 79.52
     converted = (raw - 32.0) * 5.0 / 9.0
     assert converted != pytest.approx(raw)

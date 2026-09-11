@@ -1,7 +1,7 @@
 """Pure transforms over the Tempest `better_forecast` payload.
 
 THIS MODULE IMPORTS NOTHING FROM `homeassistant`, deliberately, the same way
-`household_state`'s resolver does (LAW.md §11). Everything here is a plain
+`household_state`'s resolver does. Everything here is a plain
 function over plain dicts, so the whole condition map and every forecast row
 is testable without a running Home Assistant and without a Tempest token.
 
@@ -100,7 +100,7 @@ def map_condition(icon: Any, conditions_text: Any = None) -> str | None:
     vendor documents. `None` is what HA's weather entity wants for "cannot
     say": it reads as `unknown` on the entity and logs nothing, whereas an
     out-of-enum string fails validation and writes an error every render. This
-    file's YAML predecessor learned the same thing the same way (GH-62).
+    An earlier YAML implementation learned the same thing the same way.
     """
     if not isinstance(icon, str):
         return None
@@ -238,10 +238,9 @@ def _drop_none(row: dict[str, Any]) -> dict[str, Any]:
     """Strip keys whose value is None.
 
     An ABSENT key and a key set to None are the same to HA, but they are not
-    the same to a board reading the dict, and `weather_home.yaml` already
-    settled this estate's position: "clear" and "cannot tell" are different
-    answers, and a missing measurement is carried as missing rather than
-    defaulted. `datetime` is never None here — every caller checks it first.
+    the same to a board reading the dict: "clear" and "cannot tell" are
+    different answers, and a missing measurement is carried as missing rather
+    than defaulted. `datetime` is never None here — every caller checks it first.
     """
     return {key: value for key, value in row.items() if value is not None}
 

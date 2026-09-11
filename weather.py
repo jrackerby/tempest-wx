@@ -1,19 +1,17 @@
 """The weather entity: current conditions and forecast, both from the Tempest.
 
 The condition string is the STATION'S OWN, read from `better_forecast`'s
-`icon`. It is not derived here, and that is the point. The YAML predecessor
-this replaced (`packages/weather_home.yaml`, since deleted) had to derive one,
-because local UDP reports no condition at all: precipitation, then fog, then a
-day/night split, then cloud cover inferred from solar radiation against a
-clear-sky model. That derivation cost two tickets - GH-584 on the dusk band,
-where the fallback read absolute illuminance and so slid sunny -> partlycloudy
--> cloudy with the time of day rather than the sky, and GH-588 on the night
-branch, which asserted `clear-night` unconditionally below the horizon while
-the same file refused to publish `cloud_coverage` there, so one attribute
-claimed clear and the other said it could not tell. Both are closed. With the
-station's own icon there is no band to rule on and no night branch to
-contradict: RULED (Joel, GH-588), the condition is whatever the Tempest says
-it is.
+`icon`. It is not derived here, and that is the point. Deriving a condition
+locally is what you are forced into when all you have is the UDP broadcast,
+which reports no condition at all: precipitation, then fog, then a day/night
+split, then cloud cover inferred from solar radiation against a clear-sky
+model. That ladder has two places it reliably goes wrong. The dusk band, where
+a fallback reading absolute illuminance slides sunny -> partlycloudy -> cloudy
+with the time of day rather than the sky; and the night branch, which asserts
+`clear-night` unconditionally below the horizon while refusing to publish
+`cloud_coverage` there, so one attribute claims clear and the other says it
+cannot tell. With the station's own icon there is no band to pick and no night
+branch to contradict: the condition is whatever the Tempest says it is.
 
 The weak link is now the vendor's icon vocabulary. `map_condition` returns
 None for an icon it does not recognise, so an unmapped value reads `unknown`
@@ -127,8 +125,7 @@ class TempestWeather(TempestEntity, SingleCoordinatorWeatherEntity):
         minute. A wall that goes blank because a remote HTTP call failed is the
         exact failure this component was built to stop repeating.
 
-        This is not the never-raise contract of LAW.md §11 arriving by the back
-        door. The coordinator still raises `UpdateFailed`, the forecast still
+        This is not a never-raise contract arriving by the back door. The coordinator still raises `UpdateFailed`, the forecast still
         goes away with the cloud, and `condition` still resolves to None when
         there is no payload. Only the readings the radio can answer survive.
         """
