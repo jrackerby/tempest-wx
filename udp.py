@@ -31,6 +31,7 @@ display, at the edge.
 
 from __future__ import annotations
 
+import errno
 import json
 import math
 from typing import Any, Final
@@ -135,6 +136,35 @@ HANDLED: Final[frozenset[str]] = frozenset(
 IGNORED: Final[frozenset[str]] = frozenset(
     {"obs_air", "obs_sky", "evt_precip", "evt_strike", "light_debug"}
 )
+
+
+# What a failed bind actually means, kept here rather than at the socket so the
+# DIAGNOSIS is testable without one. It shipped wrong once: every bind failure
+# was reported as "Home Assistant is not on the hub's broadcast domain", which
+# is true for a container on a bridge network and completely misleading for the
+# case that actually happened — another integration already holding the port.
+# A log line that names the wrong cause is worse than one that says nothing,
+# because it sends the next reader to the network.
+PORT_IN_USE_ADVICE: Final = (
+    "another process already holds it and is not sharing it. Only one listener "
+    "can bind this port unless BOTH opt into port sharing, so whichever starts "
+    "first wins and the other runs cloud-only. If you also run the HACS "
+    "`tempest` integration in local-UDP mode, remove it — it is what this "
+    "integration replaces"
+)
+NOT_ON_LAN_ADVICE: Final = (
+    "Home Assistant must be on the same broadcast domain as the hub for the "
+    "local radio to reach it — a container on a bridge network is not"
+)
+
+
+def bind_failure_advice(error_number: int | None) -> str:
+    """Why the socket could not be opened, in the words that fit the cause."""
+    return (
+        PORT_IN_USE_ADVICE
+        if error_number == errno.EADDRINUSE
+        else NOT_ON_LAN_ADVICE
+    )
 
 
 def _num(value: Any) -> float | None:

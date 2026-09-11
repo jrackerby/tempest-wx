@@ -19,22 +19,29 @@ coupling needed is gone with it — the radio emits °C, millibars and m/s, whic
 are already this component's natives, so no value is converted on the way in
 and none can be converted twice.
 
-COEXISTENCE IS DELIBERATE, AND IT IS THE CUTOVER PATH. Port sharing on Linux
-needs BOTH binders to have opted into the SAME option, so this socket sets
-`SO_REUSEADDR` *and* `SO_REUSEPORT` rather than picking one: which of the two
-the other listener chose is not ours to decide. Measured, not assumed — the
-integration this replaces listens through `pyweatherflowudp`, which sets
-`SO_REUSEPORT` and says in its own source that sharing only works when every
-binder opts in. Setting just `SO_REUSEADDR` would therefore have failed against
-it with EADDRINUSE while reading perfectly well in isolation.
+THE PORT IS EXCLUSIVE IN PRACTICE, AND THAT IS A CORRECTION. This paragraph
+said the opposite for one release: that the socket's `SO_REUSEADDR` and
+`SO_REUSEPORT` let it bind alongside the integration it replaces, so the two
+could be compared side by side before either was removed. Both options are
+still set here and they are still right — port sharing needs BOTH binders to
+have opted into the SAME one, and which the other chose is not ours to decide.
+What was wrong was the claim about the other one.
 
-With both set, the two bind together, and because the station BROADCASTS the
-kernel hands each datagram to every socket on the port rather than balancing
-between them — that balancing is the unicast path. So both integrations read
-the same packets and a user can run them side by side, compare, and only then
-remove the old one. A listener that refused to start because something else was
-already listening would force the uninstall to come FIRST, which is the one
-order in which a bad cutover cannot be backed out.
+It was read from `pyweatherflowudp` 1.6.1, which does opt in and says so in its
+own source. The integration that ships today PINS 1.4.5, which predates that
+opt-in entirely — and a pinned dependency is the live fact, not whatever its
+upstream has since become. So on a real install there is no sharing: whichever
+listener starts first binds the port and the other fails with EADDRINUSE. It
+was measured the expensive way, by shipping it and watching the neighbour go to
+`setup_retry` with "Could not open a local UDP endpoint".
+
+The consequence is that the cutover is ORDERED, not parallel: remove the other
+integration, then restart. Backing that out is reinstalling it, which is a
+HACS click — the earlier worry that an uninstall-first order could not be
+backed out was overstated. What the code does about it is refuse to guess:
+`udp.bind_failure_advice` names the port collision as the cause when the errno
+says so, because the one thing worse than this failure is the misleading log
+line it used to print, which sent the reader to the network instead.
 
 A STATION THAT HAS GONE QUIET SAYS SO. Nothing drives an entity's state but an
 arriving datagram, so with no other machinery a radio that stopped would leave
@@ -57,7 +64,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import DOMAIN, LOGGER
-from .udp import SOURCE_OF, UDP_PORT, decode, parse
+from .udp import SOURCE_OF, UDP_PORT, bind_failure_advice, decode, parse
 
 # How long a source's last message stays good for. Each is several times the
 # interval the vendor documents for that message, so an ordinary dropped
@@ -123,13 +130,16 @@ class TempestLocalStation(asyncio.DatagramProtocol):
         try:
             sock = await self.hass.async_add_executor_job(_open_socket)
         except OSError as err:
+            # The CAUSE decides the wording. A port already held and a Home
+            # Assistant that cannot see the broadcast at all are different
+            # faults with different fixes, and printing one message for both
+            # sends half the readers to the wrong place.
             LOGGER.warning(
-                "Could not open UDP port %s for the local Tempest radio (%s); "
-                "this station will run on the cloud API alone. Home Assistant "
-                "must be on the same broadcast domain as the hub — a container "
-                "on a bridge network is not",
+                "Could not open UDP port %s for the local Tempest radio (%s): "
+                "%s. This station will run on the cloud API alone",
                 UDP_PORT,
                 err,
+                bind_failure_advice(err.errno),
             )
             return
 
@@ -302,10 +312,11 @@ def _open_socket() -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         # BOTH, not either. A second binder shares the port only when it set
-        # the same option this one did, and the other Tempest integration sets
-        # SO_REUSEPORT — so setting only SO_REUSEADDR would bind fine alone and
-        # fail with EADDRINUSE in exactly the side-by-side case the cutover
-        # depends on.
+        # the same option this one did, and which one that is belongs to the
+        # other process. Setting both costs nothing when this is the only
+        # listener and is the only thing that COULD enable sharing when it is
+        # not — though today it does not, because the other Tempest
+        # integration pins a `pyweatherflowudp` that predates the opt-in.
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         # Absent on Windows, and defined-but-unimplemented on some kernels.
         # Attribute-checked AND caught, because those are two different

@@ -102,9 +102,11 @@ networking all see it. A container on a *bridge* network does not, and there is
 nothing this integration can do about that from inside: it logs one warning and
 runs cloud-only.
 
-The socket is opened with both `SO_REUSEADDR` and `SO_REUSEPORT`, so it binds
-even while another integration is already listening on the same port. That is
-deliberate — see *Replacing the HACS `tempest` integration* below.
+**Only one listener can hold UDP 50222.** Sharing a port requires *both*
+binders to opt into it, and the integration this replaces does not (see below),
+so whichever starts first wins and the other runs cloud-only. This socket sets
+`SO_REUSEADDR` and `SO_REUSEPORT` anyway — they cost nothing alone and are the
+only thing that could ever enable sharing — but do not plan around them.
 
 ## Configuration
 
@@ -134,16 +136,24 @@ Until 0.2.0 this integration read its local readings out of
 by entity id, and needed it installed. It no longer does, and it now publishes
 everything that integration publishes.
 
-**Both can run at once, and that is the recommended way to cut over.** Port
-sharing needs both listeners to have opted in, and they have: that integration
-listens through `pyweatherflowudp`, which sets `SO_REUSEPORT`, and this one sets
-`SO_REUSEADDR` and `SO_REUSEPORT` both. Because the station *broadcasts*, the
-kernel then delivers each datagram to every socket bound to the port rather than
-balancing between them, so the two read the same packets and neither starves the
-other. Install this one, compare the readings you care about for as long as you
-like, and only then remove the other. A listener that refused to start while
-something else held the port would force the uninstall to come first — the one
-order in which a bad cutover cannot be backed out.
+**They cannot run side by side. Remove that integration first, then restart.**
+
+0.2.0 claimed the opposite and was wrong, so here is the measurement. Port
+sharing needs *both* binders to opt in. This one does. That one listens through
+`pyweatherflowudp`, and while **1.6.1** opts into `SO_REUSEPORT` — which is what
+0.2.0's claim was read from — the integration as shipped **pins 1.4.5**, which
+predates the opt-in entirely. A pinned dependency is the fact; its upstream is
+not. So on a real install the second listener to start fails with `EADDRINUSE`
+and reports `Could not open a local UDP endpoint`, and which one that is depends
+on Home Assistant's setup order, not on anything you chose.
+
+Backing the cutover out is reinstalling the other integration from HACS, which
+is a click; 0.2.0 called an uninstall-first order unrecoverable, and that was
+overstated too.
+
+So: remove the HACS `tempest` integration, restart, and check the readings here
+against what you remember. If you want to compare them live first, the honest
+way is to do it *before* installing this — the two sets are listed above.
 
 Two things to know before you repoint anything:
 
@@ -182,6 +192,11 @@ Two readings are not reproduced, on purpose:
   now arrives by local push. That is the honest answer to the question the
   badge is actually asked — *does this need the cloud?* — and it does: no
   token, no entry.
+- **The local listener has no off switch.** If you want this integration's
+  cloud half while something else keeps UDP 50222, there is currently no way to
+  ask for that; the listener tries, fails, logs one warning naming the port
+  collision, and the entry runs cloud-only anyway — but only if it lost the
+  race. Tracked in the issue tracker.
 - **One station per config entry.** Add a second entry for a second station.
 - **Sea-level pressure is cloud-only.** Deriving it locally needs the station's
   elevation, which is not in the broadcast.
@@ -204,7 +219,7 @@ device and the UDP socket all go with the entry.
 ./tools/run_tests.sh
 ```
 
-100 tests over the layers that import nothing from Home Assistant — the cloud
+107 tests over the layers that import nothing from Home Assistant — the cloud
 transform, the UDP wire format, the derived quantities — plus static joins over
 the platform declarations, parsed by `ast` rather than imported. No Home
 Assistant, no network, no token.

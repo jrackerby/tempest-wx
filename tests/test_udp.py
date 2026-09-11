@@ -19,6 +19,7 @@ module's own output, which would only prove the module agrees with itself.
 
 from __future__ import annotations
 
+import errno
 import importlib.util
 import math
 import sys
@@ -561,3 +562,43 @@ def test_selftest_the_source_join_detects_both_directions() -> None:
     sources = {"a", "c"}
     assert emitted - sources == {"b"}  # reading with no source
     assert sources - emitted == {"c"}  # source with no reading
+
+
+# --------------------------------------------------------------------------
+# Why a bind failed.
+#
+# This is here because it SHIPPED WRONG. One release reported every bind
+# failure as "Home Assistant is not on the hub's broadcast domain" — correct
+# for a container on a bridge network, and completely misleading for the case
+# that actually occurred, which was another integration already holding the
+# port. The wrong cause in a log line is worse than no line at all: it sends
+# the reader to the network and they stay there.
+# --------------------------------------------------------------------------
+
+
+def test_a_held_port_is_diagnosed_as_a_held_port() -> None:
+    """The errno decides the wording, not the first plausible explanation."""
+    advice = udp.bind_failure_advice(errno.EADDRINUSE)
+    assert advice == udp.PORT_IN_USE_ADVICE
+    assert "already holds it" in advice
+    # And it names the concrete thing a user can actually do about it.
+    assert "tempest" in advice
+
+
+@pytest.mark.parametrize(
+    "error_number",
+    [errno.EACCES, errno.EAFNOSUPPORT, errno.ENODEV, 0, None],
+)
+def test_any_other_failure_keeps_the_networking_explanation(error_number) -> None:
+    """Everything that is not a collision is still most likely the network."""
+    assert udp.bind_failure_advice(error_number) == udp.NOT_ON_LAN_ADVICE
+
+
+def test_selftest_the_two_explanations_are_actually_different() -> None:
+    """Prove the check above can fail.
+
+    A refactor that collapsed both branches onto one string would leave every
+    assertion here passing while restoring exactly the defect this pair of
+    messages exists to fix.
+    """
+    assert udp.PORT_IN_USE_ADVICE != udp.NOT_ON_LAN_ADVICE
