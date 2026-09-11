@@ -1,7 +1,7 @@
 # Self-assessment against the Home Assistant integration quality scale.
 #
-# LAW.md §15 makes the scale this estate's build standard, and TOOLS.md records
-# why this file is the only gate there is: hassfest's `validate_iqs_file` opens
+# The scale is this component's build standard. This file is the only gate
+# there is, because hassfest's `validate_iqs_file` opens
 # with `if not integration.core: return`, so a custom component is never checked
 # against the scale, and a `quality_scale` key in the manifest is a self-claim
 # with nothing behind it. No such key is declared in manifest.json. The rule
@@ -32,8 +32,8 @@ rules:
   test-before-configure: done
   # ^ The config flow calls better_forecast against the chosen station before
   #   creating the entry — the same endpoint and token the coordinator polls.
-  #   LAW.md §9: a check on a different channel than the one that will be used
-  #   certifies nothing, and certifies it green.
+  #   A check on a different channel than the one that will be used certifies
+  #   nothing, and certifies it green.
   test-before-setup: done  # async_config_entry_first_refresh
   unique-config-entry: done  # unique_id is tempest_wx_<station_id>
 
@@ -47,9 +47,9 @@ rules:
   docs-installation-parameters: done  # README.md
   entity-unavailable: done
   # ^ The coordinator raises UpdateFailed on an unreachable API. This does NOT
-  #   contradict LAW.md §11's never-raise contract: that governs
-  #   household_state, whose coordinator reads other ENTITIES and so has no
-  #   service to lose. See coordinator.py's module docstring.
+  #   contradict the never-raise contract a monitoring coordinator keeps: that
+  #   governs a coordinator reading other ENTITIES, which has no service to
+  #   lose. See coordinator.py's module docstring.
   integration-owner: done  # @jrackerby
   log-when-unavailable: done  # DataUpdateCoordinator logs once on the crossing and once on recovery
   parallel-updates: done  # PARALLEL_UPDATES = 0 on all three platforms
@@ -59,8 +59,8 @@ rules:
   #   The HA-facing entity classes themselves are untested; that needs
   #   pytest-homeassistant-custom-component, which is not installed here.
 
-  # --- Gold / Platinum: not targeted. LAW.md §15 sets Silver as the target for
-  #     anything reading a device or service; these are recorded as todo rather
+  # --- Gold / Platinum: not targeted. Silver is the target for anything
+  #     reading a device or service; these are recorded as todo rather
   #     than exempt so the gap stays visible.
   devices: done  # one service device per station
   diagnostics: todo

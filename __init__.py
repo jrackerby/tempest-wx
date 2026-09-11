@@ -1,20 +1,16 @@
-"""The estate's own WeatherFlow Tempest integration.
+"""A WeatherFlow Tempest integration: current conditions and forecast.
 
-Replaces the HACS `tempest` component (julianbow/TempestHomeAssistant), which
-runs here in local-UDP mode and therefore forwards only the sensor platform —
-no weather entity, no forecast, and none of the derived fields the Tempest app
-shows. See GH-587 for the verified defect list.
+Designed to run ALONGSIDE the HACS `tempest` component
+(julianbow/TempestHomeAssistant) in local-UDP mode, not instead of it. In that
+mode it forwards only the sensor platform — no weather entity, no forecast,
+and none of the derived fields the Tempest app shows — and those are what this
+component adds.
 
-SCOPE, and what it does NOT change. LAW.md §3 carries a standing ruling with
-two halves. The first — the Tempest is the ONLY source of current conditions,
-nothing backstops it, no provider is reinstated to fill a gap — is untouched
-and this component keeps it: every reading here comes from the same Tempest
-station. The second half said forecast does not come through Home Assistant at
-all and is pulled from weather.com by the surface that renders it. Joel
-reversed that half directly, and this is the reversal, labelled as one
-(LAW.md §14). It is a narrower estate than before, not a wider one: the
-forecast now comes from the same station as everything else, and weather.com
-leaves the picture.
+SCOPE. One station is the ONLY source: nothing here backstops the Tempest with
+a second provider, and both halves of what it publishes — current conditions
+and forecast — come from that same station. Measurements prefer the station's
+local radio and fall back to its cloud; condition and forecast are cloud-only,
+because the radio cannot produce them.
 """
 
 from __future__ import annotations

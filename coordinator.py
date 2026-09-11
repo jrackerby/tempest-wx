@@ -1,14 +1,13 @@
 """Cloud coordinator for the Tempest `better_forecast` endpoint.
 
-THIS COORDINATOR RAISES `UpdateFailed`, and that is not a contradiction of
-LAW.md §11's never-raise contract. §11 governs `household_state`, whose
-coordinator reads OTHER ENTITIES: it has no remote service to lose, and a
-monitor that disappears along with its subject cannot report the subject
-down, which is the exact defect that contract exists to refuse. This
-coordinator reads a remote HTTP API. When that API is unreachable the entities
-genuinely have no value, and the quality scale's `entity-unavailable` rule
-governs here on its own terms (LAW.md §15: apply a rule where it governs, not
-where it merely sounds relevant).
+THIS COORDINATOR RAISES `UpdateFailed`, and that is not a contradiction of the
+never-raise contract a monitoring coordinator keeps. That contract governs a
+coordinator reading OTHER ENTITIES: it has no remote service to lose, and a
+monitor that disappears along with its subject cannot report the subject down.
+This coordinator reads a remote HTTP API. When that API is unreachable the
+entities genuinely have no value, so the quality scale's `entity-unavailable`
+rule governs here on its own terms — a rule is applied where it governs, not
+where it merely sounds relevant.
 """
 
 from __future__ import annotations

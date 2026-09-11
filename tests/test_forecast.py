@@ -4,7 +4,7 @@ Runs with no Home Assistant, no network and no Tempest token: `forecast.py`
 imports nothing from `homeassistant`, so every assertion here is about the
 transform itself.
 
-LAW.md §4: an assertion set needs a self-test proving it CAN fail. The three
+An assertion set needs a self-test proving it CAN fail. The three
 regression tests at the bottom each re-implement the defect they guard against
 and assert that the OLD behaviour would have been caught — so a green run is
 evidence the check discriminates, not evidence it was never exercised.
@@ -233,7 +233,7 @@ def test_every_emitted_condition_is_valid(payload: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Self-test: these prove the checks above CAN fail (LAW.md §4)
+# Self-test: these prove the checks above CAN fail
 # ---------------------------------------------------------------------------
 
 

@@ -1,28 +1,24 @@
 """Current conditions from the LOCAL Tempest radio, with the cloud as backup.
 
-WHY THIS EXISTS. The weather entity started cloud-only, and the entity it
-replaces — `weather.forecast_home`, the template in
-`packages/weather_home.yaml` — is local-only. Cutting the boards over without
-this would have traded one weakness for another: every wall panel would keep
-its forecast through a WAN outage and lose its TEMPERATURE, which the template
-entity never did. A household wall that goes blank because the internet
-blinked is worse than one showing a stale forecast.
+WHY THIS EXISTS. A cloud-only weather entity and a local-only one each trade
+away the other's strength: the first keeps its forecast through a WAN outage
+and loses its TEMPERATURE, the second keeps every reading and has no forecast
+or condition at all. A display that goes blank because the internet blinked is
+worse than one showing a stale forecast.
 
 So measurements prefer the local UDP radio and fall back to the cloud, while
 condition and forecast stay cloud-only because the radio cannot produce them.
 Losing the WAN degrades this entity instead of emptying it.
 
-THE ENTITY IDS ARE THE ONES `weather_home.yaml` ALREADY READ, deliberately:
-preserving them makes the cutover a swap rather than a rewrite, and each one
-is a claim that file had already tested against the live estate. They belong
-to the separate HACS `tempest` integration running in local-UDP mode. That is
+THE ENTITY IDS BELOW BELONG TO THE SEPARATE HACS `tempest` integration running
+in local-UDP mode, and are named here deliberately rather than discovered. That is
 a real coupling, declared here rather than hidden — if that integration goes
 away these lookups find nothing, which is precisely the case the cloud
 fallback covers.
 
-NOT A PREFIX MATCH. TOOLS.md is explicit that grouping a device's entities by
-common id prefix silently drops every entity on a different one, because each
-entity keeps the area it was born in. These are full ids, named one at a time.
+NOT A PREFIX MATCH. Grouping a device's entities by common id prefix silently
+drops every entity on a different one, because each entity keeps the area it
+was born in. These are full ids, named one at a time.
 
 UNITS ARE CONVERTED, NEVER ASSUMED. The local platform publishes °F, inHg and
 mph; this component's weather entity declares metric natives and lets Home
@@ -92,7 +88,7 @@ def read_local(hass: HomeAssistant, key: str) -> float | None:
 
     None means "the radio did not say", which is the caller's signal to ask the
     cloud — it is never a zero. `ok at zero` and `could not read` are different
-    values at the source (LAW.md §11); collapsing them here would publish a
+    values at the source; collapsing them here would publish a
     calm, cold, dry day every time the hub went quiet.
     """
     entity_id = LOCAL_SOURCES.get(key)

@@ -2,8 +2,8 @@
 
 Parses the platform modules with `ast` rather than importing them, so this
 suite still needs no Home Assistant. Everything here is a JOIN, both
-directions (LAW.md §5: an audit is a join, and a one-way check passes happily
-over an orphan). A one-way "every entity has a name" check would never notice
+directions — an audit is a join, and a one-way check passes happily over an
+orphan. A one-way "every entity has a name" check would never notice
 a translation left behind by a deleted sensor.
 """
 
@@ -69,9 +69,8 @@ def test_unique_id_suffixes_cannot_collide() -> None:
     """No two entities across the platforms share a key.
 
     Unique ids are f"{DOMAIN}_{station_id}_{key}", so a key reused across two
-    platforms would produce two entities claiming one id. TOOLS.md records what
-    that costs: an id already occupied is taken with a `_2` suffix that is
-    never reclaimed.
+    platforms would produce two entities claiming one id, and an id already
+    occupied is taken with a `_2` suffix that Home Assistant never reclaims.
     """
     sensor_keys, _ = _entity_keys("sensor.py")
     binary_keys, _ = _entity_keys("binary_sensor.py")
@@ -83,7 +82,7 @@ def test_unique_id_suffixes_cannot_collide() -> None:
 def test_quality_scale_has_no_silent_todos() -> None:
     """Every rule is `done` or an explicit `todo` — never blank or invented.
 
-    The tier gaps themselves are tracked in GH-587 and GH-491, not here. This
+    The tier gaps themselves are tracked in the issue queue, not here. This
     only asserts the file says something legible about every rule it lists.
     """
     rules = yaml.safe_load((ROOT / "quality_scale.yaml").read_text())["rules"]
@@ -99,8 +98,7 @@ def test_quality_scale_has_no_silent_todos() -> None:
 def test_manifest_declares_no_quality_scale() -> None:
     """A manifest `quality_scale` key is a self-claim with no gate behind it.
 
-    TOOLS.md: hassfest's validate_iqs_file returns immediately for a custom
-    component, so the key would read green forever without anything checking
+    hassfest's validate_iqs_file returns immediately for a custom component, so the key would read green forever without anything checking
     it. quality_scale.yaml is the honest record instead.
     """
     manifest = json.loads((ROOT / "manifest.json").read_text())
@@ -112,7 +110,7 @@ def test_manifest_declares_no_quality_scale() -> None:
 
 
 def test_selftest_the_join_detects_both_directions() -> None:
-    """Prove the join above can fail (LAW.md §4)."""
+    """Prove the join above can fail."""
     declared = {"a", "b"}
     translation_keys = {"a", "c"}
     assert translation_keys - declared == {"c"}  # entity with no name

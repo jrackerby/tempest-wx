@@ -7,8 +7,8 @@ today's rain total at all. A Tempest's rain sensor fires on vibration, so a
 slammed door, a bird, or a branch can register precipitation that never fell;
 the rain check is the vendor saying whether it believes its own gauge.
 
-Publishing it separately keeps `ok at zero` distinct from `could not read` —
-LAW.md §11 — for the two accumulation sensors next door. Zero millimetres with
+Publishing it separately keeps `ok at zero` distinct from `could not read`
+for the two accumulation sensors next door. Zero millimetres with
 the check TRUE is a dry day that was measured. Zero with the check FALSE, or
 with no check at all, is a number nobody should be reading as weather.
 """

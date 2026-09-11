@@ -3,17 +3,16 @@
 DELIBERATELY NOT A SECOND COPY OF THE LOCAL SENSORS. Air temperature, humidity,
 station pressure, wind, UV, illuminance, solar radiation and the rest already
 arrive over local UDP, faster and without an internet dependency, and
-republishing them from the cloud would give the estate two entities per
-reading that disagree whenever the WAN blinks. Everything below is a value the
+republishing them from the cloud would give you two entities per reading that
+disagree whenever the WAN blinks. Everything below is a value the
 UDP broadcast does not carry.
 
-The lightning group is the one that changes what the estate can say.
-`packages/weather_home.yaml` refuses to classify a `lightning` condition at
-all, and says why: `sensor.tempest_sensor_lightning_count` carries state_class
-`total`, so whether it resets per observation window or accumulates for the
-life of the station was never measured, and reading it as "strikes now" would
-latch the weather entity into `lightning` forever after the station's first
-strike. `better_forecast` answers that question directly with counts already
+The lightning group is the one that changes what can be said at all. Nothing
+here classifies a `lightning` condition from the local strike counter:
+`sensor.tempest_sensor_lightning_count` carries state_class `total`, so whether
+it resets per observation window or accumulates for the life of the station is
+not documented, and reading it as "strikes now" would latch the weather entity
+into `lightning` forever after the station's first strike. `better_forecast` answers that question directly with counts already
 windowed to the last hour and the last three.
 """
 
