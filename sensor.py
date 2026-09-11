@@ -1,19 +1,25 @@
-"""Sensors for what the Tempest app shows and the local radio cannot.
+"""Sensors: what the radio measures, and what only the cloud can answer.
 
-DELIBERATELY NOT A SECOND COPY OF THE LOCAL SENSORS. Air temperature, humidity,
-station pressure, wind, UV, illuminance, solar radiation and the rest already
-arrive over local UDP, faster and without an internet dependency, and
-republishing them from the cloud would give you two entities per reading that
-disagree whenever the WAN blinks. Everything below is a value the
-UDP broadcast does not carry.
+TWO SETS, ONE DEVICE, NO OVERLAP. The LOCAL set below is read straight off the
+station's UDP broadcast — temperature, humidity, station pressure, the four
+wind figures, light, rain and the station's own health — and the CLOUD set is
+everything `better_forecast` knows that the radio never sends: sea-level
+pressure, the windowed lightning counts, daily rain totals, today's forecast
+row. No reading appears in both. Publishing one quantity from two sources gives
+you two entities that disagree whenever the WAN blinks, and no way to tell
+which one a dashboard is reading.
 
-The lightning group is the one that changes what can be said at all. Nothing
-here classifies a `lightning` condition from the local strike counter:
-`sensor.tempest_sensor_lightning_count` carries state_class `total`, so whether
-it resets per observation window or accumulates for the life of the station is
-not documented, and reading it as "strikes now" would latch the weather entity
-into `lightning` forever after the station's first strike. `better_forecast` answers that question directly with counts already
-windowed to the last hour and the last three.
+Until 0.2.0 the local half was not here at all: it lived in a separate
+integration, and this one read nine of its entity ids. That is why these two
+sets look like they were designed apart — they were, and merging them is what
+lets this component stand on its own.
+
+The lightning group is the one that changes what can be said at all. The radio
+sends a strike count per report interval and nothing about the hour, so nothing
+here classifies a `lightning` CONDITION from it: reading a per-interval counter
+as "strikes now" is how a weather entity latches into `lightning` for ever
+after the first strike. `better_forecast` answers that directly, with counts
+already windowed to the last hour and the last three.
 """
 
 from __future__ import annotations
@@ -30,19 +36,29 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
+    DEGREE,
+    LIGHT_LUX,
     PERCENTAGE,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    EntityCategory,
+    UnitOfElectricPotential,
+    UnitOfIrradiance,
     UnitOfLength,
     UnitOfPrecipitationDepth,
     UnitOfPressure,
+    UnitOfSpeed,
     UnitOfTemperature,
     UnitOfTime,
+    UnitOfVolumetricFlux,
 )
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from . import TempestConfigEntry
 from .const import DOMAIN
-from .entity import TempestEntity
+from .entity import TempestEntity, TempestLocalEntity
 from .forecast import current_conditions, daily_forecast, pick, to_utc
+from .udp import PRECIPITATION_TYPES
 
 # Every entity on this platform reads an already-fetched coordinator
 # payload; nothing here talks to the API on its own, so there is no
@@ -262,15 +278,284 @@ SENSORS: tuple[TempestSensorDescription, ...] = (
 )
 
 
+@dataclass(frozen=True, kw_only=True)
+class TempestLocalSensorDescription(SensorEntityDescription):
+    """A sensor fed by one key off the local radio.
+
+    `key` is the reading name `udp.py` publishes, not a separate identifier.
+    One name, so the sensor, its staleness window and the wire field it comes
+    from cannot drift apart into a three-way rename nobody catches.
+    """
+
+    transform: Callable[[Any], Any] | None = None
+
+
+def _timestamp(value: Any) -> Any:
+    """An epoch second to an aware datetime, for a timestamp sensor."""
+    return None if value is None else dt_util.utc_from_timestamp(float(value))
+
+
+LOCAL_SENSORS: tuple[TempestLocalSensorDescription, ...] = (
+    # --- What the observation measures ------------------------------------
+    TempestLocalSensorDescription(
+        key="air_temperature",
+        translation_key="air_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        suggested_display_precision=1,
+    ),
+    TempestLocalSensorDescription(
+        key="relative_humidity",
+        translation_key="relative_humidity",
+        device_class=SensorDeviceClass.HUMIDITY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        suggested_display_precision=0,
+    ),
+    TempestLocalSensorDescription(
+        key="station_pressure",
+        translation_key="station_pressure",
+        device_class=SensorDeviceClass.PRESSURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPressure.MBAR,
+        # inHg for the same reason `sea_level_pressure` above declares it:
+        # without it HA's US-customary map sends a PRESSURE device_class to
+        # psi, and this station's two pressure readings would then render in
+        # different units on the same card.
+        suggested_unit_of_measurement=UnitOfPressure.INHG,
+        suggested_display_precision=2,
+    ),
+    # --- What the observation implies -------------------------------------
+    TempestLocalSensorDescription(
+        key="dew_point",
+        translation_key="dew_point",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        suggested_display_precision=1,
+    ),
+    TempestLocalSensorDescription(
+        key="feels_like",
+        translation_key="feels_like",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        suggested_display_precision=1,
+    ),
+    TempestLocalSensorDescription(
+        key="wet_bulb_temperature",
+        translation_key="wet_bulb_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        suggested_display_precision=1,
+    ),
+    TempestLocalSensorDescription(
+        key="air_density",
+        translation_key="air_density",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="kg/m³",
+        suggested_display_precision=4,
+    ),
+    # --- Wind. FOUR figures, not one, because they answer different questions:
+    #     the three-second sample is what a flag is doing now, the average is
+    #     what the minute did, and lull and gust are that minute's floor and
+    #     ceiling. Collapsing them loses the spread, which is the part that
+    #     says whether it is gusty.
+    TempestLocalSensorDescription(
+        key="wind_speed",
+        translation_key="wind_speed",
+        device_class=SensorDeviceClass.WIND_SPEED,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfSpeed.METERS_PER_SECOND,
+        suggested_display_precision=1,
+    ),
+    TempestLocalSensorDescription(
+        key="wind_avg",
+        translation_key="wind_avg",
+        device_class=SensorDeviceClass.WIND_SPEED,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfSpeed.METERS_PER_SECOND,
+        suggested_display_precision=1,
+    ),
+    TempestLocalSensorDescription(
+        key="wind_gust",
+        translation_key="wind_gust",
+        device_class=SensorDeviceClass.WIND_SPEED,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfSpeed.METERS_PER_SECOND,
+        suggested_display_precision=1,
+    ),
+    TempestLocalSensorDescription(
+        key="wind_lull",
+        translation_key="wind_lull",
+        device_class=SensorDeviceClass.WIND_SPEED,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfSpeed.METERS_PER_SECOND,
+        suggested_display_precision=1,
+    ),
+    # A bearing is NOT a measurement to average or sum: 359° and 1° average to
+    # due south. No state_class, deliberately, so nothing downstream offers to
+    # do statistics on it.
+    TempestLocalSensorDescription(
+        key="wind_direction",
+        translation_key="wind_direction",
+        native_unit_of_measurement=DEGREE,
+        suggested_display_precision=0,
+    ),
+    TempestLocalSensorDescription(
+        key="wind_direction_avg",
+        translation_key="wind_direction_avg",
+        native_unit_of_measurement=DEGREE,
+        suggested_display_precision=0,
+    ),
+    # --- Light -------------------------------------------------------------
+    TempestLocalSensorDescription(
+        key="illuminance",
+        translation_key="illuminance",
+        device_class=SensorDeviceClass.ILLUMINANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=LIGHT_LUX,
+        suggested_display_precision=0,
+    ),
+    TempestLocalSensorDescription(
+        key="uv",
+        translation_key="uv",
+        state_class=SensorStateClass.MEASUREMENT,
+        # The literal HA itself uses for `UV_INDEX`; spelled rather than
+        # imported so this module does not depend on a constant whose only
+        # content is this string.
+        native_unit_of_measurement="UV index",
+        suggested_display_precision=1,
+    ),
+    TempestLocalSensorDescription(
+        key="solar_radiation",
+        translation_key="solar_radiation",
+        device_class=SensorDeviceClass.IRRADIANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfIrradiance.WATTS_PER_SQUARE_METER,
+        suggested_display_precision=0,
+    ),
+    # --- Rain, as the radio reports it ------------------------------------
+    #
+    # NOT `TOTAL_INCREASING`. This is the accumulation for ONE report interval
+    # and it returns to zero the moment the rain stops, so a total-increasing
+    # state class would read every dry minute as a counter reset and the
+    # long-term statistic would count each shower several times over. The
+    # day and yesterday totals, which really are cumulative, come from the
+    # cloud set above.
+    TempestLocalSensorDescription(
+        key="precip_accum_last_interval",
+        translation_key="precip_accum_last_interval",
+        device_class=SensorDeviceClass.PRECIPITATION,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPrecipitationDepth.MILLIMETERS,
+        suggested_display_precision=2,
+    ),
+    TempestLocalSensorDescription(
+        key="precipitation_intensity",
+        translation_key="precipitation_intensity",
+        device_class=SensorDeviceClass.PRECIPITATION_INTENSITY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfVolumetricFlux.MILLIMETERS_PER_HOUR,
+        suggested_display_precision=2,
+    ),
+    TempestLocalSensorDescription(
+        key="precipitation_type",
+        translation_key="precipitation_type",
+        device_class=SensorDeviceClass.ENUM,
+        options=list(PRECIPITATION_TYPES.values()),
+    ),
+    # --- Lightning, per report interval -----------------------------------
+    TempestLocalSensorDescription(
+        key="lightning_avg_distance",
+        translation_key="lightning_avg_distance",
+        device_class=SensorDeviceClass.DISTANCE,
+        native_unit_of_measurement=UnitOfLength.KILOMETERS,
+        suggested_display_precision=0,
+    ),
+    TempestLocalSensorDescription(
+        key="lightning_count",
+        translation_key="lightning_count",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="strikes",
+    ),
+    # --- The hardware's own health ----------------------------------------
+    TempestLocalSensorDescription(
+        key="battery_voltage",
+        translation_key="battery_voltage",
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    TempestLocalSensorDescription(
+        key="device_rssi",
+        translation_key="device_rssi",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    TempestLocalSensorDescription(
+        key="hub_rssi",
+        translation_key="hub_rssi",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    # BOOT TIME, NOT UPTIME. A duration changes every time it is read, so an
+    # uptime sensor writes a new state on every message for a device that has
+    # not moved; the moment it came up is a constant that changes only when it
+    # actually reboots, which is the event anybody watching this wants.
+    TempestLocalSensorDescription(
+        key="device_boot_time",
+        translation_key="device_boot_time",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        transform=_timestamp,
+    ),
+    TempestLocalSensorDescription(
+        key="hub_boot_time",
+        translation_key="hub_boot_time",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        transform=_timestamp,
+    ),
+    TempestLocalSensorDescription(
+        key="device_firmware",
+        translation_key="device_firmware",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    TempestLocalSensorDescription(
+        key="hub_firmware",
+        translation_key="hub_firmware",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+)
+
+
 async def async_setup_entry(
     hass: Any,
     entry: TempestConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Add every sensor this station can answer."""
-    coordinator = entry.runtime_data
+    """Add every sensor this station can answer, from both of its sources."""
+    data = entry.runtime_data
     async_add_entities(
-        TempestSensor(coordinator, description) for description in SENSORS
+        [
+            *(
+                TempestSensor(data.coordinator, description)
+                for description in SENSORS
+            ),
+            *(
+                TempestLocalSensor(entry, data.station, description)
+                for description in LOCAL_SENSORS
+            ),
+        ]
     )
 
 
@@ -330,3 +615,36 @@ class TempestSensor(TempestEntity, SensorEntity):
             options = self.entity_description.options or []
             return value if value in options else None
         return value
+
+
+class TempestLocalSensor(TempestLocalEntity, SensorEntity):
+    """One reading pushed in off the station's radio."""
+
+    entity_description: TempestLocalSensorDescription
+
+    def __init__(
+        self,
+        entry: TempestConfigEntry,
+        station: Any,
+        description: TempestLocalSensorDescription,
+    ) -> None:
+        """Bind the description to the station's reading of the same name."""
+        super().__init__(entry, station, description.key)
+        self.entity_description = description
+
+    @property
+    def native_value(self) -> Any:
+        """The reading, transformed only where the wire type is not the state type.
+
+        There is no unit conversion here and there is not meant to be: the
+        radio emits °C, millibars, m/s and millimetres, which are exactly the
+        natives declared above, so a value crosses this boundary untouched and
+        Home Assistant converts once for display. The entity-id path this
+        replaced had to convert on the way in, and a conversion on the way in
+        is one that can happen twice.
+        """
+        value = self._value
+        if value is None:
+            return None
+        transform = self.entity_description.transform
+        return value if transform is None else transform(value)

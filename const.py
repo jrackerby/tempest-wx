@@ -14,6 +14,13 @@ LOGGER: Final = logging.getLogger(__package__)
 CONF_STATION_ID: Final = "station_id"
 CONF_STATION_NAME: Final = "station_name"
 
+# The hardware serials behind that station, learned from the cloud station
+# record and stored so the UDP listener can tell this station's broadcasts from
+# a neighbour's. Absent on an entry created before the listener existed, which
+# `local.py` treats as "accept everything" rather than as a failure.
+CONF_DEVICE_SERIAL: Final = "device_serial"
+CONF_HUB_SERIAL: Final = "hub_serial"
+
 API_ROOT: Final = "https://swd.weatherflow.com/swd/rest"
 
 # The endpoint the Tempest app itself renders from. Enumerated off the vendor's

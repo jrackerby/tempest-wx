@@ -20,14 +20,16 @@ from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
+from homeassistant.const import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import TempestConfigEntry
 from .const import DOMAIN
-from .entity import TempestEntity
+from .entity import TempestEntity, TempestLocalEntity
 from .forecast import current_conditions
 
 # Every entity on this platform reads an already-fetched coordinator
@@ -68,16 +70,34 @@ BINARY_SENSORS: tuple[TempestBinarySensorDescription, ...] = (
 )
 
 
+LOCAL_BINARY_SENSORS: tuple[BinarySensorEntityDescription, ...] = (
+    BinarySensorEntityDescription(
+        key="sensor_faults",
+        translation_key="sensor_faults",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+)
+
+
 async def async_setup_entry(
     hass: Any,
     entry: TempestConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Add the rain-check sensors."""
-    coordinator = entry.runtime_data
+    """Add the rain-check sensors and the station's own fault line."""
+    data = entry.runtime_data
     async_add_entities(
-        TempestBinarySensor(coordinator, description)
-        for description in BINARY_SENSORS
+        [
+            *(
+                TempestBinarySensor(data.coordinator, description)
+                for description in BINARY_SENSORS
+            ),
+            *(
+                TempestSensorFault(entry, data.station, description)
+                for description in LOCAL_BINARY_SENSORS
+            ),
+        ]
     )
 
 
@@ -107,3 +127,42 @@ class TempestBinarySensor(TempestEntity, BinarySensorEntity):
             return None
         value = self.entity_description.value_fn(data)
         return None if value is None else bool(value)
+
+
+class TempestSensorFault(TempestLocalEntity, BinarySensorEntity):
+    """The station's own verdict on its sensors, off `device_status`.
+
+    A FAULT IS NAMED, NEVER COUNTED. `sensor_status` is a bit field, and an
+    entity that published "2 faults" would be the household-facing version of
+    the same defect a directive surface commits when it says "something is
+    open": the reading already knows WHICH sensor failed, so it says which. The
+    state is the yes/no a template can act on; the attribute carries the list.
+
+    An empty list is the station reporting that everything is fine, and that is
+    a different thing from no status message at all — the second reads as
+    unavailable, because the base class withholds a reading the station has not
+    sent rather than defaulting it to healthy. A monitor that reports "no
+    faults" for a hub that has been unplugged is worse than no monitor.
+    """
+
+    def __init__(
+        self,
+        entry: TempestConfigEntry,
+        station: Any,
+        description: BinarySensorEntityDescription,
+    ) -> None:
+        """Bind to the station's fault list."""
+        super().__init__(entry, station, description.key)
+        self.entity_description = description
+
+    @property
+    def is_on(self) -> bool | None:
+        """Whether any sensor is reporting itself failed."""
+        faults = self._value
+        return None if faults is None else bool(faults)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Which sensors, by the vendor's own bit names."""
+        faults = self._value
+        return None if faults is None else {"faults": faults}

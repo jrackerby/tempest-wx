@@ -30,8 +30,16 @@ from homeassistant.helpers.selector import (
 )
 
 from .api import TempestApi, TempestApiError, TempestAuthError
-from .const import CONF_STATION_ID, CONF_STATION_NAME, DOMAIN, LOGGER
+from .const import (
+    CONF_DEVICE_SERIAL,
+    CONF_HUB_SERIAL,
+    CONF_STATION_ID,
+    CONF_STATION_NAME,
+    DOMAIN,
+    LOGGER,
+)
 from .forecast import daily_forecast
+from .udp import station_serials
 
 TOKEN_SCHEMA = vol.Schema(
     {
@@ -48,9 +56,15 @@ class TempestConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self) -> None:
-        """Carry the token and the station list between the two steps."""
+        """Carry the token and the station list between the two steps.
+
+        The WHOLE station record is kept, not just its name: the hardware
+        serials the UDP listener filters on are in it, and going back for a
+        second `stations` call after the user picks would be a second round
+        trip for data this step already had in hand.
+        """
         self._token: str = ""
-        self._stations: dict[str, str] = {}
+        self._stations: dict[str, dict[str, Any]] = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -74,9 +88,7 @@ class TempestConfigFlow(ConfigFlow, domain=DOMAIN):
                 else:
                     self._token = token
                     self._stations = {
-                        str(station["station_id"]): str(
-                            station.get("name") or station["station_id"]
-                        )
+                        str(station["station_id"]): station
                         for station in stations
                         if station.get("station_id") is not None
                     }
@@ -113,13 +125,22 @@ class TempestConfigFlow(ConfigFlow, domain=DOMAIN):
                 if not daily_forecast(payload):
                     errors["base"] = "no_forecast"
                 else:
-                    name = self._stations.get(str(station_id), str(station_id))
+                    record = self._stations.get(str(station_id), {})
+                    name = self._station_name(station_id)
+                    device_serial, hub_serial = station_serials(record)
                     return self.async_create_entry(
                         title=name,
                         data={
                             CONF_TOKEN: self._token,
                             CONF_STATION_ID: station_id,
                             CONF_STATION_NAME: name,
+                            # Stored even when None. The key being present is
+                            # what tells setup it has already looked, so a
+                            # station that genuinely lists no ST or HB device
+                            # is not re-queried on every reload for an answer
+                            # that will not change.
+                            CONF_DEVICE_SERIAL: device_serial,
+                            CONF_HUB_SERIAL: hub_serial,
                         },
                     )
 
@@ -130,8 +151,10 @@ class TempestConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_STATION_ID): SelectSelector(
                         SelectSelectorConfig(
                             options=[
-                                SelectOptionDict(value=key, label=label)
-                                for key, label in self._stations.items()
+                                SelectOptionDict(
+                                    value=key, label=self._station_name(key)
+                                )
+                                for key in self._stations
                             ],
                             mode=SelectSelectorMode.DROPDOWN,
                         )
@@ -140,6 +163,11 @@ class TempestConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
+
+    def _station_name(self, station_id: Any) -> str:
+        """The station's own name, falling back to its id."""
+        record = self._stations.get(str(station_id), {})
+        return str(record.get("name") or station_id)
 
     async def async_step_reauth(
         self, entry_data: dict[str, Any]
