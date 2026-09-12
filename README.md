@@ -208,6 +208,46 @@ Two readings are not reproduced, on purpose:
   `obs_st`, and those broadcast `obs_air` and `obs_sky`, which are ignored by
   name.
 
+## Icon and logo
+
+The `t°` mark in `brand/` is what Home Assistant shows for this integration —
+on the Devices & Services card, on the station device page, and in the HACS
+panel once the component is installed.
+
+Home Assistant 2026.3 made that a local file. `homeassistant.loader` sets
+`has_branding` from the presence of a top-level `brand` directory, and the
+`brands` integration reads the images out of it **ahead of** the
+`brands.home-assistant.io` CDN — so no pull request against
+`home-assistant/brands` is involved, and the `custom_integrations/` folder over
+there is now legacy.
+
+Two files ship, both square:
+
+| file | size |
+| --- | --- |
+| `brand/icon.png` | 256×256 |
+| `brand/icon@2x.png` | 512×512 |
+
+No `logo.png`, and no `dark_` variants, deliberately. The artwork is square, so
+the brands specification says to ship the icon alone; core then walks its own
+fallback chain (`IMAGE_FALLBACKS`) inside `brand/` and answers a request for
+`logo@2x.png` or `dark_logo.png` from the icon without ever reaching the CDN.
+`tests/test_brand.py` encodes that chain and asserts all eight servable names
+resolve to a file that is actually here, which is what makes shipping two
+correct rather than lucky.
+
+Two things this does **not** reach:
+
+- **The HACS store listing for a repository nobody has installed yet.** HACS
+  cannot read a `brand/` directory out of a component that is not on disk, so
+  the store entry falls back to the CDN and gets the placeholder. Only an
+  accepted PR against `home-assistant/brands` would change that.
+- **Anything outside the Home Assistant frontend.** An external dashboard has
+  two options: fetch
+  `/api/brands/integration/tempest_wx/icon.png` from Home Assistant with its
+  own bearer token, or vendor the PNG into the app's own `public/` and serve it
+  from there. The file here is the canonical copy either way.
+
 ## Removal
 
 Settings → Devices & Services → Tempest Weather → Delete. Entities, the station
@@ -219,7 +259,7 @@ device and the UDP socket all go with the entry.
 ./tools/run_tests.sh
 ```
 
-107 tests over the layers that import nothing from Home Assistant — the cloud
+120 tests over the layers that import nothing from Home Assistant — the cloud
 transform, the UDP wire format, the derived quantities — plus static joins over
 the platform declarations, parsed by `ast` rather than imported. No Home
 Assistant, no network, no token.
