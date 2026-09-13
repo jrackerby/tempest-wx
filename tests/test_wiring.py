@@ -118,6 +118,271 @@ def test_manifest_declares_no_quality_scale() -> None:
     assert manifest["requirements"] == []
 
 
+# --- the options flow -------------------------------------------------------
+
+
+def _const_strings() -> dict[str, str]:
+    """`const.py`'s string constants, by name, so a schema key can be resolved.
+
+    The flow names its fields through `CONF_*`, never as literals, so a check
+    that only understood literals would report zero fields and pass vacuously
+    over the whole join below.
+    """
+    tree = ast.parse((ROOT / "const.py").read_text())
+    values: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            values[node.target.id] = node.value.value
+    return values
+
+
+def _options_flow_class() -> ast.ClassDef:
+    """The one `OptionsFlow` subclass in config_flow.py."""
+    tree = ast.parse((ROOT / "config_flow.py").read_text())
+    classes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        and any(getattr(base, "id", "") == "OptionsFlow" for base in node.bases)
+    ]
+    assert len(classes) == 1, [node.name for node in classes]
+    return classes[0]
+
+
+def _schema_fields(node: ast.AST) -> set[str]:
+    """Every `vol.Required`/`vol.Optional` key under this node, resolved."""
+    consts = _const_strings()
+    fields: set[str] = set()
+    for call in ast.walk(node):
+        if not isinstance(call, ast.Call):
+            continue
+        func = call.func
+        if not isinstance(func, ast.Attribute):
+            continue
+        if func.attr not in ("Required", "Optional") or not call.args:
+            continue
+        key = call.args[0]
+        if isinstance(key, ast.Constant) and isinstance(key.value, str):
+            fields.add(key.value)
+        elif isinstance(key, ast.Name) and key.id in consts:
+            fields.add(consts[key.id])
+    return fields
+
+
+def _option_merges(node: ast.AST) -> list[bool]:
+    """For each `async_create_entry` under this node, whether it MERGES options.
+
+    An options flow's `async_create_entry(data=...)` replaces `entry.options`
+    wholesale rather than updating it, so a step that returns only its own keys
+    deletes every other step's — silently, and invisibly until a second step
+    exists to be deleted. The one-step case reads as correct either way, which
+    is exactly why this is asserted rather than left to a comment.
+    """
+    merges: list[bool] = []
+    for call in ast.walk(node):
+        if not isinstance(call, ast.Call):
+            continue
+        func = call.func
+        if not isinstance(func, ast.Attribute) or func.attr != "async_create_entry":
+            continue
+        data = next((kw.value for kw in call.keywords if kw.arg == "data"), None)
+        merges.append(_unpacks_existing_options(data))
+    return merges
+
+
+def _unpacks_existing_options(data: ast.AST | None) -> bool:
+    """Whether a `data=` argument spreads the entry's existing options into itself."""
+    if not isinstance(data, ast.Dict):
+        return False
+    return any(
+        # A `**` unpack is the only entry in an ast.Dict with no key.
+        key is None and ast.unparse(value).replace(" ", "") == (
+            "self.config_entry.options"
+        )
+        for key, value in zip(data.keys, data.values)
+    )
+
+
+def test_every_options_step_merges_over_the_existing_options() -> None:
+    """The trap this component is allowed to meet exactly once."""
+    merges = _option_merges(_options_flow_class())
+    assert merges, "parsed no async_create_entry out of the options flow"
+    assert all(merges), merges
+
+
+def test_selftest_the_options_merge_check_can_fail() -> None:
+    """Prove the check above separates a merge from a replacement.
+
+    Three shapes, because the wrong two are the ones a step is actually written
+    as by accident: the user input passed straight through, and a literal dict
+    of this step's own keys. Both look right in isolation.
+    """
+    def merges(body: str) -> list[bool]:
+        return _option_merges(
+            ast.parse(
+                "class F(OptionsFlow):\n"
+                "    def s(self, user_input):\n"
+                f"        return self.async_create_entry({body})\n"
+            )
+        )
+
+    assert merges("data={**self.config_entry.options, **user_input}") == [True]
+    assert merges("data=user_input") == [False]
+    assert merges('data={"local_udp": True}') == [False]
+
+
+def test_every_options_field_is_named_and_every_name_is_used(strings: dict) -> None:
+    """The join, both directions, over the options step's own fields."""
+    fields = _schema_fields(_options_flow_class())
+    step = strings["options"]["step"]["init"]
+    declared = set(step["data"])
+    described = set(step["data_description"])
+
+    assert fields, "parsed no fields out of the options flow's schema"
+    assert fields == declared, fields ^ declared
+    # A description for a field that is not there is a name with no entity by
+    # another route: it renders nowhere and nothing ever notices it is stale.
+    assert described <= declared, described - declared
+
+
+# --- what setup does with the option ----------------------------------------
+
+
+def _init_tree() -> ast.Module:
+    """`__init__.py`, parsed.
+
+    Parsed with the running interpreter's own grammar, so the module's PEP 695
+    `type` statement needs Python 3.12 or newer. Deliberately not guarded: Home
+    Assistant 2026.x requires an interpreter well past that, so a run old enough
+    to choke here could not be making a claim about this component anyway, and a
+    skip would turn that into a quiet pass. CI runs this suite on 3.13.
+    """
+    return ast.parse((ROOT / "__init__.py").read_text())
+
+
+def _function(tree: ast.Module, name: str) -> ast.AsyncFunctionDef:
+    """One top-level async function, by name."""
+    for node in tree.body:
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == name:
+            return node
+    raise AssertionError(f"no async def {name} at module level")
+
+
+def _calls_named(node: ast.AST, attr: str) -> list[ast.Call]:
+    """Every call to a method of this name under a node."""
+    return [
+        call
+        for call in ast.walk(node)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == attr
+    ]
+
+
+def _enclosing_ifs(node: ast.AST, target: ast.Call) -> list[ast.If]:
+    """Every `if` statement under a node that contains this exact call."""
+    return [
+        branch
+        for branch in ast.walk(node)
+        if isinstance(branch, ast.If)
+        and any(inner is target for inner in ast.walk(branch))
+    ]
+
+
+def test_the_listener_starts_only_under_the_options_own_test() -> None:
+    """An unconditional `async_start()` is the defect the toggle exists to remove.
+
+    Asserted on the CONDITION and not only on the presence of one, because an
+    `if` on something else — a stored serial, a platform list — would satisfy a
+    check that merely counted branches while leaving the listener ungoverned.
+    """
+    setup = _function(_init_tree(), "async_setup_entry")
+    starts = _calls_named(setup, "async_start")
+    assert len(starts) == 1, len(starts)
+
+    guards = _enclosing_ifs(setup, starts[0])
+    assert guards, "async_start() is not inside any conditional"
+    tests = {ast.unparse(branch.test) for branch in guards}
+    assert any("local_udp" in test for test in tests), tests
+
+
+def test_selftest_the_listener_gate_check_can_fail() -> None:
+    """Prove the gate check sees an ungated start, and a wrongly gated one."""
+    ungated = _function(
+        ast.parse(
+            "async def async_setup_entry(hass, entry):\n"
+            "    await station.async_start()\n"
+        ),
+        "async_setup_entry",
+    )
+    starts = _calls_named(ungated, "async_start")
+    assert len(starts) == 1
+    assert _enclosing_ifs(ungated, starts[0]) == []
+
+    wrong = _function(
+        ast.parse(
+            "async def async_setup_entry(hass, entry):\n"
+            "    if entry.data.get('device_serial'):\n"
+            "        await station.async_start()\n"
+        ),
+        "async_setup_entry",
+    )
+    branches = _enclosing_ifs(wrong, _calls_named(wrong, "async_start")[0])
+    assert branches
+    assert not any(
+        "local_udp" in ast.unparse(branch.test) for branch in branches
+    )
+
+
+def test_the_update_listener_is_registered_after_the_serial_top_up() -> None:
+    """Order is load-bearing here, and nothing about it is visible at runtime.
+
+    `_async_learn_serials` writes `entry.data` through `async_update_entry`,
+    which fires every registered update listener as a task. Registered first,
+    this entry's listener is scheduled mid-setup and runs at the next await —
+    reading a `runtime_data` that is not assigned yet, over a write the setup
+    made itself. The entry still finishes loading, so the symptom is an
+    exception in a task nobody is watching and a reload nobody asked for.
+    """
+    setup = _function(_init_tree(), "async_setup_entry")
+    lines = {
+        fragment: [
+            call.lineno
+            for call in ast.walk(setup)
+            if isinstance(call, ast.Call) and fragment in ast.unparse(call.func)
+        ]
+        for fragment in ("_async_learn_serials", "add_update_listener")
+    }
+    assert all(len(found) == 1 for found in lines.values()), lines
+    assert lines["add_update_listener"][0] > lines["_async_learn_serials"][0], lines
+
+
+def test_the_update_listener_reloads_only_when_the_toggle_moved() -> None:
+    """A blanket reload would restart the entry for every write to it.
+
+    Including the serial top-up above and a reauth, which reloads itself — so
+    the listener compares what setup ACTED on against what the options now say,
+    and returns without doing anything when they agree.
+    """
+    listener = _function(_init_tree(), "_async_entry_updated")
+    guards = [
+        ast.unparse(branch.test)
+        for branch in ast.walk(listener)
+        if isinstance(branch, ast.If)
+        and any(isinstance(statement, ast.Return) for statement in branch.body)
+    ]
+    assert guards, "the update listener has no early return; it reloads on any write"
+    assert any(
+        "local_udp" in guard and "runtime_data" in guard for guard in guards
+    ), guards
+    assert len(_calls_named(listener, "async_reload")) == 1
+
+
 def _udp() -> object:
     """`udp.py`, loaded by path — it imports no Home Assistant."""
     spec = importlib.util.spec_from_file_location("udp_wiring", ROOT / "udp.py")

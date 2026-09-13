@@ -16,10 +16,17 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import CONF_TOKEN
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -33,12 +40,14 @@ from .api import TempestApi, TempestApiError, TempestAuthError
 from .const import (
     CONF_DEVICE_SERIAL,
     CONF_HUB_SERIAL,
+    CONF_LOCAL_UDP,
     CONF_STATION_ID,
     CONF_STATION_NAME,
     DOMAIN,
     LOGGER,
 )
 from .forecast import daily_forecast
+from .local import local_udp_enabled
 from .udp import station_serials
 
 TOKEN_SCHEMA = vol.Schema(
@@ -54,6 +63,12 @@ class TempestConfigFlow(ConfigFlow, domain=DOMAIN):
     """Token, then station, then a real forecast read before anything is saved."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> TempestOptionsFlow:
+        """Offer the options flow. Its presence is what enables the button."""
+        return TempestOptionsFlow()
 
     def __init__(self) -> None:
         """Carry the token and the station list between the two steps.
@@ -199,4 +214,49 @@ class TempestConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="reauth_confirm", data_schema=TOKEN_SCHEMA, errors=errors
+        )
+
+
+class TempestOptionsFlow(OptionsFlow):
+    """One toggle: whether this entry listens to the station's own radio.
+
+    WHY AN OPTION AND NOT A SECOND ENTRY. UDP 50222 is exclusive in practice, so
+    with no way to decline it the losing listener is chosen by Home Assistant's
+    setup order rather than by anyone. Turning it off is how a user asks for the
+    cloud half deliberately — to run this alongside the integration it replaces
+    and compare the two before removing either.
+
+    EVERY STEP MERGES OVER `entry.options`, INCLUDING THIS ONE WHILE IT IS STILL
+    THE ONLY STEP. `async_create_entry(data=...)` REPLACES the options mapping
+    wholesale rather than updating it, so a step returning only its own keys
+    deletes every other step's. Today that is invisible — there is nothing else
+    to delete — and it stays invisible right up to the commit that adds a second
+    step, by which point the step doing the damage looks perfectly correct on
+    its own. `tests/test_wiring.py` asserts the merge instead of trusting this
+    paragraph to be read.
+    """
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show the toggle at its live value, and store what comes back."""
+        if user_input is not None:
+            return self.async_create_entry(
+                data={**self.config_entry.options, **user_input}
+            )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    # Required with a default, not Optional: a checkbox the user
+                    # unticks must come back as an explicit False. Optional
+                    # would omit the key entirely and the merge above would then
+                    # preserve the old True, so unticking it would do nothing.
+                    vol.Required(
+                        CONF_LOCAL_UDP,
+                        default=local_udp_enabled(self.config_entry),
+                    ): BooleanSelector()
+                }
+            ),
         )

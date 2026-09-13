@@ -21,6 +21,13 @@ CONF_STATION_NAME: Final = "station_name"
 CONF_DEVICE_SERIAL: Final = "device_serial"
 CONF_HUB_SERIAL: Final = "hub_serial"
 
+# Whether this entry listens to the station's own radio at all. An OPTION, not
+# entry data: it is a preference about how this entry runs, changeable after
+# setup, and nothing about which station the entry identifies. Defaults ON, so
+# an entry created before the toggle existed keeps the behaviour it had.
+CONF_LOCAL_UDP: Final = "local_udp"
+DEFAULT_LOCAL_UDP: Final = True
+
 API_ROOT: Final = "https://swd.weatherflow.com/swd/rest"
 
 # The endpoint the Tempest app itself renders from. Enumerated off the vendor's

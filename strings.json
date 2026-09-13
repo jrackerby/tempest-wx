@@ -34,6 +34,20 @@
       "reauth_successful": "Re-authentication succeeded."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tempest",
+        "description": "Only one listener can hold UDP 50222. Switch this off to run the cloud half alone — alongside another Tempest integration, or on a Home Assistant that cannot see the broadcast at all.",
+        "data": {
+          "local_udp": "Listen to the station's local broadcast"
+        },
+        "data_description": {
+          "local_udp": "On by default. Switched off, the forecast and the cloud readings carry on and the local readings go unavailable. The entry reloads when you change this."
+        }
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "air_temperature": { "name": "Temperature" },

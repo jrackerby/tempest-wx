@@ -17,7 +17,12 @@ rules:
   brands: todo  # no icon/logo submitted to home-assistant/brands; private integration
   common-modules: done  # coordinator.py, entity.py
   config-flow: done
-  config-flow-test-coverage: todo  # the flow is untested; needs pytest-homeassistant-custom-component
+  config-flow-test-coverage: todo
+  # ^ Neither flow is EXERCISED; both need pytest-homeassistant-custom-component.
+  #   The options flow's one structural trap is asserted statically instead —
+  #   async_create_entry(data=) replaces entry.options wholesale, so every step
+  #   must merge over them — because that defect is invisible until a second step
+  #   exists and a comment saying so is not a gate. See tests/test_wiring.py.
   dependency-transparency: done  # no third-party requirements at all
   docs-actions: done  # none to document
   docs-conditions: done  # no conditions provided
@@ -65,11 +70,12 @@ rules:
   parallel-updates: done  # PARALLEL_UPDATES = 0 on all three platforms
   reauthentication-flow: done  # async_step_reauth / reauth_confirm, on a rejected token only
   test-coverage: todo
-  # ^ 107 tests over the pure layers — the cloud transform, the UDP wire
+  # ^ 127 tests over the pure layers — the cloud transform, the UDP wire
   #   format, the derived quantities — plus static joins over the platform
-  #   declarations. No HA, no network, no token. The HA-facing entity classes
-  #   and the socket lifecycle are untested; that needs
-  #   pytest-homeassistant-custom-component, which is not installed here.
+  #   declarations and over what setup does with the local_udp option. No HA, no
+  #   network, no token. The HA-facing entity classes and the socket lifecycle
+  #   are untested; that needs pytest-homeassistant-custom-component, which is
+  #   not installed here.
 
   # --- Gold / Platinum: not targeted. Silver is the target for anything
   #     reading a device or service; these are recorded as todo rather
@@ -101,6 +107,10 @@ rules:
   exception-translations: todo
   icon-translations: todo
   reconfiguration-flow: todo
+  # ^ NOT satisfied by the options flow, which changes how this entry runs and
+  #   never what it points at. This rule wants async_step_reconfigure, so a user
+  #   can repoint an entry at another station without deleting it and losing its
+  #   entity ids. Recorded here so the options flow is not mistaken for it.
   repair-issues: todo
   stale-devices: todo  # one station per entry; nothing goes stale
   inject-websession: done  # async_get_clientsession, passed into TempestApi
