@@ -35,10 +35,16 @@ listener starts first binds the port and the other fails with EADDRINUSE. It
 was measured the expensive way, by shipping it and watching the neighbour go to
 `setup_retry` with "Could not open a local UDP endpoint".
 
-The consequence is that the cutover is ORDERED, not parallel: remove the other
-integration, then restart. Backing that out is reinstalling it, which is a
-HACS click — the earlier worry that an uninstall-first order could not be
-backed out was overstated. What the code does about it is refuse to guess:
+The consequence used to be that the cutover was ORDERED and nothing else:
+remove the other integration, then restart, and hope. It is now a CHOICE, because
+`local_udp_enabled` below can turn this listener off. A user who wants to
+compare the two side by side installs this one cloud-only, reads the cloud half
+against the readings they already trust, removes the old integration, and only
+then switches the radio on — no race, and no window in which the outcome is
+decided by Home Assistant's setup order rather than by them. Backing any of it
+out is reinstalling the other integration, which is a HACS click.
+
+What the code does when the port IS held anyway is refuse to guess:
 `udp.bind_failure_advice` names the port collision as the cause when the errno
 says so, because the one thing worse than this failure is the misleading log
 line it used to print, which sent the reader to the network instead.
@@ -59,11 +65,12 @@ import time
 from datetime import timedelta
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 
-from .const import DOMAIN, LOGGER
+from .const import CONF_LOCAL_UDP, DEFAULT_LOCAL_UDP, DOMAIN, LOGGER
 from .udp import SOURCE_OF, UDP_PORT, bind_failure_advice, decode, parse
 
 # How long a source's last message stays good for. Each is several times the
@@ -88,6 +95,22 @@ HEARTBEAT = timedelta(seconds=30)
 def signal_update(entry_id: str) -> str:
     """The dispatcher signal one entry's local entities listen on."""
     return f"{DOMAIN}_local_{entry_id}"
+
+
+@callback
+def local_udp_enabled(entry: ConfigEntry) -> bool:
+    """Whether this entry is configured to listen to the station's radio.
+
+    ONE ACCESSOR, TWO READERS. Setup reads this to decide whether to open the
+    socket; the options flow reads it to seed the toggle at its current value.
+    Two literals for one key is how those two drift apart, and the drift would
+    present as a toggle that displays one state while the entry runs the other.
+
+    Absent means ON. An entry created before this option existed has an empty
+    options mapping, and defaulting it off would silently take the local
+    readings away from every install that already works.
+    """
+    return bool(entry.options.get(CONF_LOCAL_UDP, DEFAULT_LOCAL_UDP))
 
 
 class TempestLocalStation(asyncio.DatagramProtocol):

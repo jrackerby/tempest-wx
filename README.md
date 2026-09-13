@@ -108,6 +108,10 @@ so whichever starts first wins and the other runs cloud-only. This socket sets
 `SO_REUSEADDR` and `SO_REUSEPORT` anyway — they cost nothing alone and are the
 only thing that could ever enable sharing — but do not plan around them.
 
+You can also decline the contest: the listener has an off switch (see
+**Options**), so which integration holds the port is a decision rather than a
+race decided by Home Assistant's setup order.
+
 ## Configuration
 
 One field: a **personal access token**, created at
@@ -129,6 +133,28 @@ Poll cadence for the cloud half comes from the payload's own
 `refresh_interval_seconds`, floored at 60s. Nothing here picks a number. The
 local half is not polled at all — the station pushes.
 
+### Options
+
+One option, on the integration's **Configure** button, changeable after setup:
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| Listen to the station's local broadcast | **on** | Opens the UDP 50222 socket. Switched **off**, the entry runs cloud-only: the forecast, the condition and every cloud reading carry on, and the local readings go `unavailable`. |
+
+Changing it **reloads the entry**, because that is what opens or closes the
+socket — the setting on its own changes nothing already running.
+
+The entity set does not change either way. Switched off, the local entities are
+exactly as unavailable as they are when the bind is refused, on purpose: one
+code path, and cloud-only means the same thing and looks the same way however
+you arrived at it.
+
+Why it exists: UDP 50222 is exclusive in practice, so without an off switch the
+listener that loses is chosen by Home Assistant's setup order rather than by
+anyone. Switching it off is how you ask for the cloud half deliberately — to run
+this alongside another Tempest integration, or on a Home Assistant that cannot
+see the broadcast at all.
+
 ## Replacing the HACS `tempest` integration
 
 Until 0.2.0 this integration read its local readings out of
@@ -136,9 +162,22 @@ Until 0.2.0 this integration read its local readings out of
 by entity id, and needed it installed. It no longer does, and it now publishes
 everything that integration publishes.
 
-**They cannot run side by side. Remove that integration first, then restart.**
+**Their two listeners cannot run side by side — but you can switch this one's
+off, and then they can.** The cutover is a sequence you choose rather than a
+race:
 
-0.2.0 claimed the opposite and was wrong, so here is the measurement. Port
+1. Install this integration with **Listen to the station's local broadcast**
+   switched off. Nothing contends for UDP 50222, and the cloud half is live
+   immediately.
+2. Compare it against the readings you already trust, for as long as you like.
+3. Remove the HACS `tempest` integration.
+4. Switch the listener on. The entry reloads and the local readings appear.
+
+Backing out at any point is reinstalling the other integration from HACS, which
+is a click.
+
+The reason step 1 needs the switch at all is below, and 0.2.0 claimed the
+opposite and was wrong, so here is the measurement. Port
 sharing needs *both* binders to opt in. This one does. That one listens through
 `pyweatherflowudp`, and while **1.6.1** opts into `SO_REUSEPORT` — which is what
 0.2.0's claim was read from — the integration as shipped **pins 1.4.5**, which
@@ -147,13 +186,8 @@ not. So on a real install the second listener to start fails with `EADDRINUSE`
 and reports `Could not open a local UDP endpoint`, and which one that is depends
 on Home Assistant's setup order, not on anything you chose.
 
-Backing the cutover out is reinstalling the other integration from HACS, which
-is a click; 0.2.0 called an uninstall-first order unrecoverable, and that was
-overstated too.
-
-So: remove the HACS `tempest` integration, restart, and check the readings here
-against what you remember. If you want to compare them live first, the honest
-way is to do it *before* installing this — the two sets are listed above.
+0.2.0 also called an uninstall-first order unrecoverable, and that was overstated
+too — it is one HACS click either way.
 
 Two things to know before you repoint anything:
 
@@ -192,11 +226,11 @@ Two readings are not reproduced, on purpose:
   now arrives by local push. That is the honest answer to the question the
   badge is actually asked — *does this need the cloud?* — and it does: no
   token, no entry.
-- **The local listener has no off switch.** If you want this integration's
-  cloud half while something else keeps UDP 50222, there is currently no way to
-  ask for that; the listener tries, fails, logs one warning naming the port
-  collision, and the entry runs cloud-only anyway — but only if it lost the
-  race. Tracked in the issue tracker.
+- **The off switch declines the contest; it does not win it.** With the listener
+  on, UDP 50222 is still exclusive in practice. If another Tempest listener is
+  also running, whichever Home Assistant starts first binds the port and the
+  other logs the collision and runs cloud-only — which one that is is still not
+  yours to choose. What is yours is whether to enter at all.
 - **One station per config entry.** Add a second entry for a second station.
 - **Sea-level pressure is cloud-only.** Deriving it locally needs the station's
   elevation, which is not in the broadcast.
