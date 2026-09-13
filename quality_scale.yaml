@@ -13,7 +13,11 @@
 rules:
   # --- Bronze ---
   action-setup: done  # no service actions registered
-  appropriate-polling: done  # cadence comes from the payload's own refresh_interval_seconds
+  appropriate-polling: done
+  # ^ Cadence comes from the payload's own refresh_interval_seconds, floored
+  #   at MIN_SCAN_INTERVAL; the request-refresh debouncer cools down for that
+  #   same floor, and a failed poll is re-paced by pacing.py — never below
+  #   the floor, and later than the cadence when the vendor said stop.
   brands: todo  # no icon/logo submitted to home-assistant/brands; private integration
   common-modules: done  # coordinator.py, entity.py
   config-flow: done
