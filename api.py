@@ -11,11 +11,13 @@ which is pure and tested.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from aiohttp import ClientError, ClientResponseError, ClientSession, ClientTimeout
 
 from .const import FORECAST_URL, FORECAST_UNITS, STATIONS_URL
+from .pacing import parse_retry_after
 
 REQUEST_TIMEOUT = ClientTimeout(total=30)
 
@@ -26,6 +28,21 @@ class TempestApiError(Exception):
 
 class TempestAuthError(TempestApiError):
     """The token was rejected. Distinct because it needs a human, not a retry."""
+
+
+class TempestRateLimitError(TempestApiError):
+    """The API answered and said stop. Distinct because it needs PATIENCE.
+
+    Carries the wait the vendor asked for, in seconds, where the response named
+    one. A retry at the normal cadence is exactly what a rate limit punishes,
+    so the coordinator paces this one differently from a connection that
+    simply never answered.
+    """
+
+    def __init__(self, message: str, retry_after: float | None = None) -> None:
+        """Keep the vendor's own wait alongside the message."""
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class TempestApi:
@@ -66,9 +83,21 @@ class TempestApi:
                 # entry into an endless retry that can never succeed.
                 if response.status in (401, 403):
                     raise TempestAuthError(f"token rejected ({response.status})")
+                # 429 is a refusal whatever it carries. 503 is one only when it
+                # names a wait — a bare 503 is a server that is down, which is
+                # the UNREACHABLE shape, and paced as such by the caller.
+                if response.status in (429, 503):
+                    retry_after = parse_retry_after(
+                        response.headers.get("Retry-After"), datetime.now(UTC)
+                    )
+                    if response.status == 429 or retry_after is not None:
+                        raise TempestRateLimitError(
+                            f"HTTP {response.status} from {url}: rate limited",
+                            retry_after=retry_after,
+                        )
                 response.raise_for_status()
                 payload = await response.json(content_type=None)
-        except TempestAuthError:
+        except (TempestAuthError, TempestRateLimitError):
             raise
         except ClientResponseError as err:
             raise TempestApiError(f"HTTP {err.status} from {url}") from err

@@ -133,6 +133,18 @@ Poll cadence for the cloud half comes from the payload's own
 `refresh_interval_seconds`, floored at 60s. Nothing here picks a number. The
 local half is not polled at all — the station pushes.
 
+That 60s floor holds on every path to the API, not only the schedule: a
+`homeassistant.update_entity` call (or an automation looping one) coalesces
+into at most one poll per minute. When a poll fails, the next attempt is
+paced by the *kind* of failure. A **rate limit** (HTTP 429, or a 503 naming a
+`Retry-After`) is retried when the vendor said to, or, with no header, at a
+wait that doubles from the normal cadence on each consecutive refusal, up to
+an hour. A **connection that never answered** — a timeout, a WAN outage — is
+retried sooner than the cadence, from the floor, doubling back up to the
+cadence and never past it, so a blip recovers in about a minute and a long
+outage costs the vendor nothing beyond a healthy day's polling. A successful
+poll resets the count and the schedule.
+
 ### Options
 
 One option, on the integration's **Configure** button, changeable after setup:
